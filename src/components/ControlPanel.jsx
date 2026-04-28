@@ -92,9 +92,12 @@ export default function ControlPanel({
         </div>
 
         {/* Auto Takt Speed Adjuster */}
-        <div className="control-block" style={{ paddingTop: '1rem', borderTop: '1px solid var(--border-light)' }}>
+        <div className="control-block" style={{ paddingTop: '1rem', borderTop: '1px solid var(--border-light)', opacity: !mesEnabled ? 0.5 : 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span className="control-label" style={{ color: line.autoTakt ? 'var(--accent-cyan)' : 'var(--text-muted)' }}>Auto Speed Control</span>
+            <div style={{ display: 'flex', flexDirection: 'column' }}>
+              <span className="control-label" style={{ color: line.autoTakt ? 'var(--accent-cyan)' : 'var(--text-muted)' }}>Auto Speed Control</span>
+              <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Requires MES Link</span>
+            </div>
             <label className="hmi-switch" style={{ gap: '0.5rem' }}>
               <input 
                 type="checkbox" 
@@ -109,32 +112,63 @@ export default function ControlPanel({
           </div>
 
           {line.autoTakt && (
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
-              <div style={{ flex: 1 }}>
-                <span className="control-label" style={{ fontSize: '0.65rem' }}>Target QTY</span>
-                <input 
-                  type="number" 
-                  className="hmi-input" 
-                  style={{ fontSize: '1rem', padding: '0.5rem' }}
-                  value={line.targetQuantity}
-                  onChange={(e) => updateLine(activeLine, { targetQuantity: Number(e.target.value) })}
-                  disabled={!mesEnabled}
-                  min="1"
-                />
+            <>
+              <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                <div style={{ flex: 1 }}>
+                  <span className="control-label" style={{ fontSize: '0.65rem' }}>Target QTY</span>
+                  <input 
+                    type="number" 
+                    className="hmi-input" 
+                    style={{ fontSize: '1rem', padding: '0.5rem' }}
+                    value={line.targetQuantity}
+                    onChange={(e) => updateLine(activeLine, { targetQuantity: Number(e.target.value) })}
+                    disabled={!mesEnabled}
+                    min="1"
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <span className="control-label" style={{ fontSize: '0.65rem' }}>Time (Sec)</span>
+                  <input 
+                    type="number" 
+                    className="hmi-input" 
+                    style={{ fontSize: '1rem', padding: '0.5rem' }}
+                    value={line.shiftDuration}
+                    onChange={(e) => updateLine(activeLine, { shiftDuration: Number(e.target.value) })}
+                    disabled={!mesEnabled}
+                    min="1"
+                  />
+                </div>
               </div>
-              <div style={{ flex: 1 }}>
-                <span className="control-label" style={{ fontSize: '0.65rem' }}>Time (Sec)</span>
-                <input 
-                  type="number" 
-                  className="hmi-input" 
-                  style={{ fontSize: '1rem', padding: '0.5rem' }}
-                  value={line.shiftDuration}
-                  onChange={(e) => updateLine(activeLine, { shiftDuration: Number(e.target.value) })}
-                  disabled={!mesEnabled}
-                  min="1"
-                />
+              
+              {/* Run Progress Bar */}
+              <div style={{ marginTop: '1.25rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', fontFamily: 'var(--font-mono)', marginBottom: '0.5rem', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>RUN PROGRESS</span>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--accent-cyan)' }}>
+                      {line.partsCount} / {line.targetQuantity} ({(Math.min(line.partsCount / Math.max(line.targetQuantity, 1) * 100, 100)).toFixed(1)}%)
+                    </span>
+                    <button 
+                      onClick={() => updateLine(activeLine, { partsCount: 0 })}
+                      style={{ background: 'transparent', border: '1px solid var(--border-light)', color: 'var(--text-muted)', fontSize: '0.6rem', padding: '0.2rem 0.4rem', cursor: 'pointer', borderRadius: '3px', transition: 'all 0.2s' }}
+                      onMouseOver={(e) => { e.target.style.color = 'var(--text-main)'; e.target.style.borderColor = 'var(--text-main)'; }}
+                      onMouseOut={(e) => { e.target.style.color = 'var(--text-muted)'; e.target.style.borderColor = 'var(--border-light)'; }}
+                    >
+                      RESET
+                    </button>
+                  </div>
+                </div>
+                <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.05)', borderRadius: '3px', overflow: 'hidden' }}>
+                  <div style={{ 
+                    width: `${Math.min(line.partsCount / Math.max(line.targetQuantity, 1) * 100, 100)}%`, 
+                    height: '100%', 
+                    background: 'var(--accent-cyan)', 
+                    boxShadow: '0 0 10px var(--accent-cyan-dim)',
+                    transition: 'width 0.3s ease-out'
+                  }}></div>
+                </div>
               </div>
-            </div>
+            </>
           )}
         </div>
 
@@ -146,7 +180,7 @@ export default function ControlPanel({
               className="hmi-input" 
               value={line.taktTime}
               onChange={(e) => handleTaktChange(Number(e.target.value))}
-              disabled={!mesEnabled || line.autoTakt}
+              disabled={line.autoTakt}
               min="0.1"
               step="0.1"
             />
@@ -156,9 +190,9 @@ export default function ControlPanel({
 
         <div className="control-block">
           <span className="control-label">Line Status</span>
-          <div className={`status-pill ${line.activeFault ? 'error' : (line.isRunning && mesEnabled ? 'running' : '')}`} style={{ alignSelf: 'flex-start', marginTop: '0.5rem' }}>
+          <div className={`status-pill ${line.activeFault ? 'error' : (line.isRunning ? 'running' : '')}`} style={{ alignSelf: 'flex-start', marginTop: '0.5rem' }}>
             <div className="status-dot"></div>
-            {line.activeFault ? 'FAULT_ACTIVE' : (line.isRunning && mesEnabled ? 'Running' : 'Stopped')}
+            {line.activeFault ? 'FAULT_ACTIVE' : (line.isRunning ? 'Running' : 'Stopped')}
           </div>
         </div>
 
@@ -179,16 +213,16 @@ export default function ControlPanel({
             <button 
               className="hmi-btn" 
               onClick={triggerFault}
-              disabled={!mesEnabled || line.activeFault}
-              style={{ borderColor: (!mesEnabled || line.activeFault) ? 'var(--border-light)' : 'rgba(255, 165, 0, 0.4)', color: (!mesEnabled || line.activeFault) ? 'var(--text-muted)' : '#ffb042' }}
+              disabled={line.activeFault}
+              style={{ borderColor: (line.activeFault) ? 'var(--border-light)' : 'rgba(255, 165, 0, 0.4)', color: (line.activeFault) ? 'var(--text-muted)' : '#ffb042' }}
             >
               Sim Fault
             </button>
             <button 
               className="hmi-btn" 
               onClick={clearFault}
-              disabled={!mesEnabled || !line.activeFault}
-              style={{ borderColor: (!mesEnabled || !line.activeFault) ? 'var(--border-light)' : 'rgba(0, 240, 255, 0.4)', color: (!mesEnabled || !line.activeFault) ? 'var(--text-muted)' : 'var(--accent-cyan)' }}
+              disabled={!line.activeFault}
+              style={{ borderColor: (!line.activeFault) ? 'var(--border-light)' : 'rgba(0, 240, 255, 0.4)', color: (!line.activeFault) ? 'var(--text-muted)' : 'var(--accent-cyan)' }}
             >
               Ack / Reset
             </button>
@@ -201,7 +235,7 @@ export default function ControlPanel({
           <button 
             className="hmi-btn btn-run" 
             onClick={handleStart}
-            disabled={!mesEnabled || line.isRunning || line.activeFault}
+            disabled={line.isRunning || line.activeFault}
           >
             <Play size={16} />
             Start
@@ -209,7 +243,7 @@ export default function ControlPanel({
           <button 
             className="hmi-btn btn-stop" 
             onClick={handleStop}
-            disabled={!mesEnabled || !line.isRunning}
+            disabled={!line.isRunning}
           >
             <Square size={16} />
             Stop

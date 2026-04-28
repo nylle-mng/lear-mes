@@ -3,7 +3,7 @@ import React from 'react';
 export default function ConveyorVisualizer({ mesEnabled, linesState }) {
   const getLineData = (id) => {
     const line = linesState[id];
-    const isMoving = mesEnabled && line.isRunning;
+    const isMoving = line.isRunning;
     const animDuration = line.taktTime > 0 ? line.taktTime : 1;
     return { isMoving, animDuration, fault: line.activeFault };
   };
@@ -15,22 +15,23 @@ export default function ConveyorVisualizer({ mesEnabled, linesState }) {
   const hasAnyFault = a1.fault || b4.fault || c2.fault;
 
   return (
-    <div className="hmi-panel" style={{ width: '100%', minHeight: '300px', flex: 1 }}>
-      <div className="hmi-panel-header">
+    <div className="hmi-panel" style={{ width: '100%', minHeight: '300px', flex: 1, position: 'relative' }}>
+      <div className="hmi-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span className="hmi-panel-title">Multi-Line Conveyor Visualization</span>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          SECTOR_07
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          {!mesEnabled && (
+            <span style={{ fontSize: '0.7rem', color: '#ffb042', border: '1px solid rgba(255,176,66,0.3)', padding: '0.25rem 0.5rem', borderRadius: '4px', background: 'rgba(255,176,66,0.1)' }}>
+              READ-ONLY MONITORING
+            </span>
+          )}
+          <div style={{ fontFamily: 'var(--font-mono)', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+            SECTOR_07
+          </div>
         </div>
       </div>
       
       <div className="visualizer-container" style={{ flexDirection: 'column', padding: '2rem 10%', gap: '2.5rem', justifyContent: 'center' }}>
         <div className="grid-overlay"></div>
-        
-        {!mesEnabled && !hasAnyFault && (
-          <div className="overlay-message">
-            <span className="overlay-text">INDEPENDENT MODE</span>
-          </div>
-        )}
 
         {/* LINE A1 */}
         <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '0.5rem', zIndex: 10 }}>

@@ -29,10 +29,13 @@ export default function Dashboard() {
     if (enabled) {
       addLog('MES Link Established. System ONLINE.', 'success');
     } else {
-      addLog('MES Link Disconnected. Operating in INDEPENDENT MODE.', 'warning');
+      addLog('MES Control Disabled. Operating in READ-ONLY MONITORING MODE.', 'warning');
       setLinesState(prev => {
         const next = { ...prev };
-        Object.keys(next).forEach(id => next[id].isRunning = false);
+        Object.keys(next).forEach(id => {
+          next[id].autoTakt = false;
+          next[id].taktTime = INITIAL_LINES[id].taktTime; // Revert to slower default manual speeds
+        });
         return next;
       });
     }
@@ -40,8 +43,6 @@ export default function Dashboard() {
 
   // Master Game Loop for physics/downtime simulation
   useEffect(() => {
-    if (!mesEnabled) return;
-    
     const lastPartTime = { A1: Date.now(), B4: Date.now(), C2: Date.now() };
     const lastDowntimeTick = { A1: Date.now(), B4: Date.now(), C2: Date.now() };
 

@@ -169,7 +169,7 @@ const MaintenancePage = () => (
 );
 
 function App() {
-  const [activePage, setActivePage] = useState('conveyor');
+  const [activePage, setActivePage] = useState('overview');
 
   const renderPage = () => {
     switch (activePage) {
