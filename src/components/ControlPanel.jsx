@@ -49,22 +49,18 @@ export default function ControlPanel({
       </div>
 
       {/* LINE SELECTOR */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border-light)', background: 'rgba(0,0,0,0.2)' }}>
-        {['A1', 'B4', 'C2'].map(id => (
-          <div 
-            key={id}
-            onClick={() => setActiveLine(id)}
-            style={{
-              flex: 1, textAlign: 'center', padding: '0.75rem', cursor: 'pointer',
-              fontFamily: 'var(--font-mono)', fontSize: '0.85rem', transition: 'all 0.2s',
-              color: activeLine === id ? 'var(--accent-cyan)' : 'var(--text-muted)',
-              borderBottom: activeLine === id ? '2px solid var(--accent-cyan)' : '2px solid transparent',
-              background: activeLine === id ? 'rgba(0, 240, 255, 0.05)' : 'transparent'
-            }}
-          >
-            LINE_{id}
-          </div>
-        ))}
+      <div style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-light)', display: 'flex', alignItems: 'center', gap: '1rem', background: 'rgba(0,0,0,0.2)' }}>
+        <span className="control-label" style={{ margin: 0, whiteSpace: 'nowrap' }}>Select Line:</span>
+        <select 
+          className="hmi-input" 
+          style={{ width: '100%', fontSize: '1rem', padding: '0.4rem', background: 'var(--bg-main)', border: '1px solid var(--border-light)' }}
+          value={activeLine}
+          onChange={(e) => setActiveLine(e.target.value)}
+        >
+          {Object.keys(linesState).map(id => (
+            <option key={id} value={id}>LINE_{id} {linesState[id].activeFault ? '(FAULT)' : ''}</option>
+          ))}
+        </select>
       </div>
 
       <div className="hmi-panel-content" style={{ gap: '1.25rem', paddingTop: '1rem', overflowY: 'auto', flex: 1 }}>
@@ -225,6 +221,13 @@ export default function ControlPanel({
               style={{ borderColor: (!line.activeFault) ? 'var(--border-light)' : 'rgba(0, 240, 255, 0.4)', color: (!line.activeFault) ? 'var(--text-muted)' : 'var(--accent-cyan)' }}
             >
               Ack / Reset
+            </button>
+            <button 
+              className="hmi-btn" 
+              onClick={() => { updateLine(activeLine, { scrapCount: line.scrapCount + 1 }); addLog(`Defect logged on LINE_${activeLine}`, 'warning'); }}
+              style={{ borderColor: 'rgba(255, 50, 50, 0.4)', color: '#ff4444' }}
+            >
+              Log Defect
             </button>
           </div>
         </div>
