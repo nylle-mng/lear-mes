@@ -1,6 +1,10 @@
-import React from 'react';
+import React, { useState } from 'react';
 
-export default function Dashboard({ mesEnabled, handleMesToggle, activeLine, setActiveLine, linesState, updateLine, eventLogs, addLog }) {
+export default function Dashboard({ mesEnabled, handleMesToggle, activeLine, setActiveLine, linesState, updateLine, eventLogs, addLog, logDefect, currentUser, ROLES }) {
+  const isSupervisor = currentUser?.role.level >= ROLES.SUPERVISOR.level;
+  const canLogDefect = currentUser?.role.level >= ROLES.QUALITY.level || isSupervisor;
+  const [isRejecting, setIsRejecting] = useState(false);
+  const defectCodes = ['SCRATCH/DENT', 'MISSING PART', 'FAILED TEST', 'WRONG COLOR'];
   const lineIds = Object.keys(linesState);
   const currentIndex = lineIds.indexOf(activeLine);
   
@@ -36,8 +40,9 @@ export default function Dashboard({ mesEnabled, handleMesToggle, activeLine, set
             {mesEnabled ? 'MES ONLINE' : 'MES OFFLINE'}
           </div>
           <button 
-            style={{ ...btnStyle, padding: '8px' }}
+            style={{ ...btnStyle, padding: '8px', opacity: isSupervisor ? 1 : 0.5 }}
             onClick={() => handleMesToggle(!mesEnabled)}
+            disabled={!isSupervisor}
           >
             {mesEnabled ? 'DISABLE MES' : 'ENABLE MES'}
           </button>
@@ -53,8 +58,8 @@ export default function Dashboard({ mesEnabled, handleMesToggle, activeLine, set
             min="1" max="20" step="0.5"
             value={21 - line.taktTime} // invert so max is at top
             onChange={(e) => updateLine(activeLine, { taktTime: 21 - Number(e.target.value) })}
-            style={{ writingMode: 'vertical-lr', direction: 'rtl', height: '200px', width: '24px', cursor: 'pointer' }}
-            disabled={line.autoTakt}
+            style={{ writingMode: 'vertical-lr', direction: 'rtl', height: '200px', width: '24px', cursor: isSupervisor && !line.autoTakt ? 'pointer' : 'not-allowed' }}
+            disabled={line.autoTakt || !isSupervisor}
           />
           <span style={{ color: '#000', fontWeight: 'bold', fontSize: '14px', marginTop: '15px' }}>MIN</span>
         </div>
@@ -67,7 +72,7 @@ export default function Dashboard({ mesEnabled, handleMesToggle, activeLine, set
               value={line.taktTime}
               onChange={(e) => updateLine(activeLine, { taktTime: Number(e.target.value) })}
               style={{ background: '#000', color: '#0f0', border: '2px solid #222', padding: '5px', fontFamily: 'monospace', fontWeight: 'bold', width: '100%', boxSizing: 'border-box' }}
-              disabled={line.autoTakt}
+              disabled={line.autoTakt || !isSupervisor}
               min="0.1"
               step="0.1"
             />
@@ -77,9 +82,9 @@ export default function Dashboard({ mesEnabled, handleMesToggle, activeLine, set
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', width: '100%' }}>
           <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: line.autoTakt ? '#00ff00' : '#444', border: '2px solid #000', boxShadow: 'inset 1px 1px 3px rgba(0,0,0,0.8)' }}></div>
           <button 
-            style={{ ...btnStyle, flex: 1, padding: '10px 5px', fontSize: '10px' }}
+            style={{ ...btnStyle, flex: 1, padding: '10px 5px', fontSize: '10px', opacity: (mesEnabled && isSupervisor) ? 1 : 0.5 }}
             onClick={() => { updateLine(activeLine, { autoTakt: !line.autoTakt }); }}
-            disabled={!mesEnabled}
+            disabled={!mesEnabled || !isSupervisor}
           >
             AUTO TAKT<br/>MODE
           </button>
@@ -95,6 +100,7 @@ export default function Dashboard({ mesEnabled, handleMesToggle, activeLine, set
                 value={line.targetQuantity}
                 onChange={(e) => updateLine(activeLine, { targetQuantity: Number(e.target.value) })}
                 style={{ background: '#000', color: '#0f0', border: '2px solid #222', padding: '5px', fontFamily: 'monospace', fontWeight: 'bold', width: '100%', boxSizing: 'border-box' }}
+                disabled={!isSupervisor}
               />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column' }}>
@@ -104,6 +110,7 @@ export default function Dashboard({ mesEnabled, handleMesToggle, activeLine, set
                 value={line.shiftDuration}
                 onChange={(e) => updateLine(activeLine, { shiftDuration: Number(e.target.value) })}
                 style={{ background: '#000', color: '#0f0', border: '2px solid #222', padding: '5px', fontFamily: 'monospace', fontWeight: 'bold', width: '100%', boxSizing: 'border-box' }}
+                disabled={!isSupervisor}
               />
             </div>
           </div>
@@ -226,9 +233,35 @@ export default function Dashboard({ mesEnabled, handleMesToggle, activeLine, set
 
         <button style={btnStyle} onClick={handleReset}>RESET TOTAL<br/>PRODUCTION</button>
         <button style={btnStyle} onClick={() => { handleReset(); handleStart(); }}>START NEW<br/>BATCH ?</button>
-        <button style={{ ...btnStyle, color: '#aa0000', border: '2px solid #aa0000' }} onClick={() => { updateLine(activeLine, { activeFault: 'MANUAL_REJECT', scrapCount: line.scrapCount + 1, isRunning: false }); addLog(`Reject triggered on LINE_${activeLine}`, 'error'); }}>
-          SIMULATE<br/>REJECT
-        </button>
+        
+        {isRejecting ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '100%', marginTop: '10px' }}>
+            <div style={{ textAlign: 'center', fontSize: '10px', fontWeight: 'bold', color: '#ffaaaa' }}>SELECT DEFECT CODE</div>
+            {defectCodes.map(code => (
+              <button 
+                key={code} 
+                style={{ ...btnStyle, background: '#aa0000', color: '#fff', border: '2px solid #ff5555' }}
+                onClick={() => {
+                  updateLine(activeLine, { activeFault: code, scrapCount: line.scrapCount + 1, isRunning: false });
+                  if (logDefect) logDefect(code);
+                  addLog(`Defect [${code}] logged on LINE_${activeLine}`, 'error');
+                  setIsRejecting(false);
+                }}
+              >
+                {code}
+              </button>
+            ))}
+            <button style={{ ...btnStyle, marginTop: '10px' }} onClick={() => setIsRejecting(false)}>CANCEL</button>
+          </div>
+        ) : (
+          <button 
+            style={{ ...btnStyle, color: '#aa0000', border: '2px solid #aa0000', marginTop: '10px', opacity: canLogDefect ? 1 : 0.5 }} 
+            onClick={() => setIsRejecting(true)}
+            disabled={!canLogDefect}
+          >
+            LOG NEW<br/>DEFECT
+          </button>
+        )}
       </div>
 
       <style>{`

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Dashboard from './components/Dashboard';
-import { LayoutDashboard, Settings2, ActivitySquare, ShieldAlert, CheckCircle, AlertTriangle, TrendingUp, Download, Monitor } from 'lucide-react';
+import { LayoutDashboard, Settings2, ActivitySquare, ShieldAlert, CheckCircle, AlertTriangle, TrendingUp, Download, Monitor, Clock } from 'lucide-react';
 import './index.css';
 
 const generateInitialLines = (count) => {
@@ -14,6 +14,32 @@ const generateInitialLines = (count) => {
 };
 
 const INITIAL_LINES = generateInitialLines(37);
+
+const ROLES = {
+  OPERATOR: { name: 'OPERATOR', level: 1 },
+  QUALITY: { name: 'QUALITY_TECH', level: 2 },
+  MAINTENANCE: { name: 'MAINTENANCE_TECH', level: 2 },
+  SUPERVISOR: { name: 'SUPERVISOR', level: 3 }
+};
+
+const LoginScreen = ({ onLogin }) => {
+  const loginBtnStyle = { background: '#222', color: '#fff', border: '1px solid #444', padding: '1rem', fontSize: '1rem', cursor: 'pointer', fontFamily: 'var(--font-mono)', textAlign: 'left', transition: 'background 0.2s', width: '100%' };
+  return (
+    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#0a0a0a', zIndex: 10000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--font-mono)' }}>
+      <div style={{ width: '400px', background: '#111', border: '2px solid var(--accent-cyan)', padding: '2rem', display: 'flex', flexDirection: 'column', gap: '1.5rem', boxShadow: '0 0 20px var(--accent-cyan-dim)' }}>
+        <h1 style={{ color: 'var(--accent-cyan)', textAlign: 'center', margin: 0, letterSpacing: '4px' }}>LEAR MES</h1>
+        <h3 style={{ color: '#fff', textAlign: 'center', margin: 0 }}>AUTHORIZATION REQUIRED</h3>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1rem' }}>
+          <button onClick={() => onLogin('J. Smith', ROLES.OPERATOR)} style={{ ...loginBtnStyle, borderLeft: '5px solid #aaa' }}>LOGIN AS OPERATOR</button>
+          <button onClick={() => onLogin('K. Davis', ROLES.QUALITY)} style={{ ...loginBtnStyle, borderLeft: '5px solid #ffb042' }}>LOGIN AS QUALITY TECH</button>
+          <button onClick={() => onLogin('M. Chen', ROLES.MAINTENANCE)} style={{ ...loginBtnStyle, borderLeft: '5px solid #00cc00' }}>LOGIN AS MAINTENANCE TECH</button>
+          <button onClick={() => onLogin('A. Admin', ROLES.SUPERVISOR)} style={{ ...loginBtnStyle, borderLeft: '5px solid var(--accent-cyan)' }}>LOGIN AS SUPERVISOR</button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const OEEGauge = ({ oee }) => {
   const radius = 60;
@@ -38,7 +64,8 @@ const OEEGauge = ({ oee }) => {
 };
 
 // Lear-specific Placeholder Pages
-const OverviewPage = ({ linesState }) => {
+const OverviewPage = ({ linesState, productionHistory }) => {
+  const [trendFilter, setTrendFilter] = React.useState('ALL');
   let totalParts = 0;
   let totalScrap = 0;
   let totalOpTime = 0;
@@ -86,6 +113,14 @@ const OverviewPage = ({ linesState }) => {
     .sort((a, b) => a.oee - b.oee)
     .slice(0, 5);
 
+  let currentPowerKw = 0;
+  Object.values(linesState).forEach(l => {
+    if (l.isRunning && !l.activeFault) {
+       // Base load 15kW + speed penalty
+       currentPowerKw += 15 + Math.max(0, (20 - l.taktTime) * 3.5);
+    }
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', height: '100%' }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1.5rem' }}>
@@ -124,6 +159,77 @@ const OverviewPage = ({ linesState }) => {
             <div style={{ fontSize: '2.5rem', color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{8450 + (linesState['L12']?.partsCount || 0)}</div>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>Wire Harnesses Assembled</div>
           </div>
+        </div>
+
+        <div className="hmi-panel">
+          <div className="hmi-panel-header">
+            <span className="hmi-panel-title">Energy Monitoring</span>
+            <ActivitySquare size={16} color="#ffaa00" />
+          </div>
+          <div className="hmi-panel-content">
+            <div style={{ fontSize: '2.5rem', color: currentPowerKw > 1500 ? 'var(--status-stop)' : '#ffaa00', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>
+              {currentPowerKw.toFixed(1)} kW
+            </div>
+            <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>Live Plant Power Draw</div>
+          </div>
+        </div>
+      </div>
+
+      {/* TREND GRAPH PANEL */}
+      <div className="hmi-panel" style={{ height: '220px', display: 'flex', flexDirection: 'column' }}>
+        <div className="hmi-panel-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <span className="hmi-panel-title">Production Trend</span>
+            <select 
+               value={trendFilter} 
+               onChange={e => setTrendFilter(e.target.value)}
+               style={{ background: 'var(--bg-base)', color: 'var(--text-main)', border: '1px solid var(--border-light)', padding: '2px 5px', fontSize: '0.75rem', outline: 'none' }}
+            >
+              <option value="ALL">ALL FAMILIES</option>
+              <option value="SEATS">FRONT SEAT FRAMES</option>
+              <option value="HARNESS">MAIN BODY HARNESS</option>
+            </select>
+          </div>
+          <TrendingUp size={16} color="var(--accent-cyan)" />
+        </div>
+        <div className="hmi-panel-content" style={{ display: 'flex', flexDirection: 'row', alignItems: 'flex-end', gap: '2%', padding: '1rem', height: '100%', boxSizing: 'border-box' }}>
+           {productionHistory.map((pt, i) => {
+              let val = 0;
+              let target = 0;
+              if (trendFilter === 'ALL') { val = (pt.partsSeat || 0) + (pt.partsHarness || 0); target = 1000; }
+              else if (trendFilter === 'SEATS') { val = pt.partsSeat || 0; target = 400; }
+              else if (trendFilter === 'HARNESS') { val = pt.partsHarness || 0; target = 600; }
+
+              const maxVal = Math.max(...productionHistory.map(d => {
+                 if (trendFilter === 'ALL') return (d.partsSeat || 0) + (d.partsHarness || 0);
+                 if (trendFilter === 'SEATS') return d.partsSeat || 0;
+                 return d.partsHarness || 0;
+              }), target * 1.2, 100);
+
+              const heightPct = Math.min((val / maxVal) * 100, 100);
+              const targetHeight = (target / maxVal) * 100;
+              return (
+                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', position: 'relative', justifyContent: 'flex-end' }}>
+                    <div style={{ position: 'absolute', bottom: `${targetHeight}%`, width: '100%', borderBottom: '2px dashed #ffb042', zIndex: 0 }}></div>
+                    <div style={{ 
+                        width: '80%', 
+                        height: `${heightPct}%`, 
+                        background: val >= target ? 'var(--status-run)' : 'var(--status-stop)',
+                        transition: 'height 0.5s ease-out',
+                        zIndex: 1,
+                        boxShadow: '0 0 10px rgba(0,0,0,0.5)',
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        justifyContent: 'center',
+                        paddingTop: '5px',
+                        overflow: 'hidden'
+                    }}>
+                      <span style={{ fontSize: '0.65rem', color: '#000', fontWeight: 'bold', transform: 'rotate(-90deg)', marginTop: '15px' }}>{val}pcs</span>
+                    </div>
+                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '0.5rem', fontFamily: 'var(--font-mono)' }}>{pt.label}</div>
+                 </div>
+              );
+           })}
         </div>
       </div>
       
@@ -195,7 +301,7 @@ const OverviewPage = ({ linesState }) => {
   );
 };
 
-const QualityPage = ({ linesState, eventLogs }) => {
+const QualityPage = ({ linesState, eventLogs, defectCounts }) => {
   let totalParts = 0;
   let totalScrap = 0;
   Object.values(linesState).forEach(line => {
@@ -204,6 +310,7 @@ const QualityPage = ({ linesState, eventLogs }) => {
   });
   
   const ftq = totalParts > 0 ? ((totalParts - totalScrap) / totalParts) * 100 : 100;
+  const sortedDefects = Object.entries(defectCounts).sort((a, b) => b[1] - a[1]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', height: '100%' }}>
@@ -225,28 +332,54 @@ const QualityPage = ({ linesState, eventLogs }) => {
           </div>
         </div>
       </div>
-      <div className="hmi-panel" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-        <div className="hmi-panel-header">
-          <span className="hmi-panel-title">Recent Quality Alerts</span>
+
+      <div style={{ display: 'flex', gap: '1.5rem', flex: 1, minHeight: 0 }}>
+        {/* Pareto Chart */}
+        <div className="hmi-panel" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div className="hmi-panel-header">
+            <span className="hmi-panel-title">Defect Pareto Analysis</span>
+          </div>
+          <div className="hmi-panel-content" style={{ padding: '1.5rem', overflowY: 'auto' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {sortedDefects.map(([code, count]) => (
+                <div key={code}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', marginBottom: '0.5rem', fontFamily: 'var(--font-mono)' }}>
+                    <span>{code}</span>
+                    <span style={{ color: count > 0 ? 'var(--status-stop)' : 'inherit' }}>{count}</span>
+                  </div>
+                  <div style={{ width: '100%', height: '8px', background: 'var(--bg-base)', border: '1px solid var(--border-light)' }}>
+                    <div style={{ width: `${totalScrap > 0 ? (count / totalScrap) * 100 : 0}%`, height: '100%', background: 'var(--status-stop)', transition: 'width 0.5s' }}></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        <div className="hmi-panel-content" style={{ padding: '0 1.5rem 1.5rem 1.5rem', overflowY: 'auto' }}>
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
-            {totalScrap > 0 && (
-              <li style={{ padding: '1.5rem 0', borderBottom: '1px solid var(--border-light)', display: 'flex', gap: '1rem', color: 'var(--status-stop)' }}>
-                <AlertTriangle size={18} /> <span>Live Shift: {totalScrap} defects have been logged across active lines.</span>
-              </li>
-            )}
-            {eventLogs.filter(log => log.type === 'error').slice(0, 10).map((log, idx) => (
-              <li key={idx} style={{ padding: '1.5rem 0', borderBottom: '1px solid var(--border-light)', display: 'flex', gap: '1rem', color: 'var(--status-stop)' }}>
-                <AlertTriangle size={18} /> <span>[{log.time.toLocaleTimeString()}] - {log.msg}</span>
-              </li>
-            ))}
-            {totalScrap === 0 && eventLogs.filter(log => log.type === 'error').length === 0 && (
-              <li style={{ padding: '1.5rem 0', display: 'flex', gap: '1rem', color: 'var(--text-muted)' }}>
-                <CheckCircle size={18} color="var(--status-run)" /> <span style={{ color: 'var(--text-main)' }}>No active quality alerts. Operations nominal.</span>
-              </li>
-            )}
-          </ul>
+
+        {/* Quality Alerts */}
+        <div className="hmi-panel" style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+          <div className="hmi-panel-header">
+            <span className="hmi-panel-title">Recent Quality Alerts</span>
+          </div>
+          <div className="hmi-panel-content" style={{ padding: '0 1.5rem 1.5rem 1.5rem', overflowY: 'auto' }}>
+            <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontFamily: 'var(--font-mono)', fontSize: '0.85rem' }}>
+              {totalScrap > 0 && (
+                <li style={{ padding: '1.5rem 0', borderBottom: '1px solid var(--border-light)', display: 'flex', gap: '1rem', color: 'var(--status-stop)' }}>
+                  <AlertTriangle size={18} /> <span>Live Shift: {totalScrap} defects have been logged across active lines.</span>
+                </li>
+              )}
+              {eventLogs.filter(log => log.type === 'error').slice(0, 10).map((log, idx) => (
+                <li key={idx} style={{ padding: '1.5rem 0', borderBottom: '1px solid var(--border-light)', display: 'flex', gap: '1rem', color: 'var(--status-stop)' }}>
+                  <AlertTriangle size={18} /> <span>[{log.time.toLocaleTimeString()}] - {log.msg}</span>
+                </li>
+              ))}
+              {totalScrap === 0 && eventLogs.filter(log => log.type === 'error').length === 0 && (
+                <li style={{ padding: '1.5rem 0', display: 'flex', gap: '1rem', color: 'var(--text-muted)' }}>
+                  <CheckCircle size={18} color="var(--status-run)" /> <span style={{ color: 'var(--text-main)' }}>No active quality alerts. Operations nominal.</span>
+                </li>
+              )}
+            </ul>
+          </div>
         </div>
       </div>
     </div>
@@ -354,6 +487,7 @@ const AndonBoard = ({ linesState, exitAndon }) => {
 function App() {
   const [activePage, setActivePage] = useState('overview');
   const [andonMode, setAndonMode] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
   
   // Hosted State
   const [mesEnabled, setMesEnabled] = useState(() => {
@@ -379,15 +513,60 @@ function App() {
     }
     return [];
   });
+  const [defectCounts, setDefectCounts] = useState(() => {
+    const saved = localStorage.getItem('mes_defectCounts');
+    return saved ? JSON.parse(saved) : { 'SCRATCH/DENT': 0, 'MISSING PART': 0, 'FAILED TEST': 0, 'WRONG COLOR': 0 };
+  });
+  const [isShiftBreak, setIsShiftBreak] = useState(() => {
+    return localStorage.getItem('mes_shiftBreak') === 'true';
+  });
+  const [activeShiftDuration, setActiveShiftDuration] = useState(() => {
+    return parseInt(localStorage.getItem('mes_shiftDuration')) || 3600;
+  });
+  const [productionHistory, setProductionHistory] = useState(() => {
+    const saved = localStorage.getItem('mes_productionHistory');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (parsed.length > 0 && parsed[0].partsSeat === undefined) {
+         return parsed.map(p => ({ label: p.label, partsSeat: Math.floor(p.parts * 0.4) || 0, partsHarness: Math.floor(p.parts * 0.6) || 0 }));
+      }
+      return parsed;
+    }
+    const initial = [];
+    for(let i=11; i>=0; i--) {
+      initial.push({ label: `T-${i}h`, partsSeat: Math.floor(Math.random()*100)+300, partsHarness: Math.floor(Math.random()*100)+500 });
+    }
+    return initial;
+  });
 
   // Persistence Hooks
   useEffect(() => { localStorage.setItem('mes_enabled', mesEnabled); }, [mesEnabled]);
   useEffect(() => { localStorage.setItem('mes_activeLine', activeLine); }, [activeLine]);
   useEffect(() => { localStorage.setItem('mes_linesState', JSON.stringify(linesState)); }, [linesState]);
   useEffect(() => { localStorage.setItem('mes_eventLogs', JSON.stringify(eventLogs)); }, [eventLogs]);
+  useEffect(() => { localStorage.setItem('mes_defectCounts', JSON.stringify(defectCounts)); }, [defectCounts]);
+  useEffect(() => { localStorage.setItem('mes_shiftBreak', isShiftBreak); }, [isShiftBreak]);
+  useEffect(() => { localStorage.setItem('mes_shiftDuration', activeShiftDuration); }, [activeShiftDuration]);
+  useEffect(() => { localStorage.setItem('mes_productionHistory', JSON.stringify(productionHistory)); }, [productionHistory]);
 
   const addLog = (msg, type = 'info') => {
     setEventLogs(prev => [{ time: new Date(), msg, type }, ...prev].slice(0, 50));
+  };
+
+  const handleShiftChange = (duration) => {
+    setActiveShiftDuration(duration);
+    setLinesState(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(id => {
+        next[id].shiftDuration = duration;
+      });
+      return next;
+    });
+    addLog(`Global shift template updated to ${duration / 3600} hours.`, 'info');
+  };
+
+  const logDefect = (code) => {
+    setDefectCounts(prev => ({ ...prev, [code]: (prev[code] || 0) + 1 }));
   };
 
   useEffect(() => {
@@ -411,10 +590,49 @@ function App() {
     }
   };
 
+  const lastPartsRef = useRef({ seat: 0, harness: 0 });
+  const linesStateRef = useRef(linesState);
+  useEffect(() => { linesStateRef.current = linesState; }, [linesState]);
+
+  useEffect(() => {
+    let currentSeatTotal = 0;
+    let currentHarnessTotal = 0;
+    Object.entries(linesStateRef.current).forEach(([id, l]) => {
+      if (parseInt(id.replace('L', '')) <= 15) currentSeatTotal += l.partsCount;
+      else currentHarnessTotal += l.partsCount;
+    });
+    lastPartsRef.current = { seat: currentSeatTotal, harness: currentHarnessTotal };
+
+    const interval = setInterval(() => {
+       if (!mesEnabled || isShiftBreak) return;
+       
+       let cSeat = 0;
+       let cHarness = 0;
+       Object.entries(linesStateRef.current).forEach(([id, l]) => {
+          if (parseInt(id.replace('L', '')) <= 15) cSeat += l.partsCount;
+          else cHarness += l.partsCount;
+       });
+       
+       const deltaSeat = cSeat - lastPartsRef.current.seat;
+       const deltaHarness = cHarness - lastPartsRef.current.harness;
+       lastPartsRef.current = { seat: cSeat, harness: cHarness };
+
+       setProductionHistory(prev => {
+          const next = [...prev.slice(1), {
+             label: new Date().toLocaleTimeString([], {minute:'2-digit', second:'2-digit'}),
+             partsSeat: Math.floor(deltaSeat * 20),
+             partsHarness: Math.floor(deltaHarness * 20)
+          }];
+          return next;
+       });
+    }, 15000); // Every 15 seconds real-time = new data point
+    return () => clearInterval(interval);
+  }, [mesEnabled, isShiftBreak]);
+
   // Master Game Loop for physics/downtime simulation
   useEffect(() => {
-    const lastPartTime = { A1: Date.now(), B4: Date.now(), C2: Date.now() };
-    const lastTimeTick = { A1: Date.now(), B4: Date.now(), C2: Date.now() };
+    const lastPartTime = {};
+    const lastTimeTick = {};
 
     const interval = setInterval(() => {
       setLinesState(prev => {
@@ -425,36 +643,48 @@ function App() {
         Object.keys(next).forEach(id => {
           const line = { ...next[id] };
           
-          // 1. Auto Takt calculation
-          if (line.autoTakt && line.targetQuantity > 0 && line.shiftDuration > 0) {
-            const calcTakt = Number((line.shiftDuration / line.targetQuantity).toFixed(2));
-            if (calcTakt !== line.taktTime) {
-              line.taktTime = calcTakt;
+          if (!lastTimeTick[id]) lastTimeTick[id] = now;
+          if (!lastPartTime[id]) lastPartTime[id] = now;
+
+          if (isShiftBreak) {
+            if (now - lastTimeTick[id] >= 1000) {
+              line.plannedDowntime = (line.plannedDowntime || 0) + 1;
+              lastTimeTick[id] += 1000;
               updated = true;
             }
-          }
-
-          // 2. Time accumulation (1 sec intervals)
-          if (now - lastTimeTick[id] >= 1000) {
-            if (!line.isRunning) {
-              line.downtime += 1;
-            } else {
-              line.operatingTime += 1;
-            }
-            lastTimeTick[id] += 1000;
-            updated = true;
-          }
-
-          // 3. Parts production
-          if (line.isRunning && line.taktTime > 0) {
-            const taktMs = line.taktTime * 1000;
-            if (now - lastPartTime[id] >= taktMs) {
-              line.partsCount += 1;
-              lastPartTime[id] += taktMs;
-              updated = true;
-            }
+            lastPartTime[id] = now; // prevent parts accumulation
           } else {
-            lastPartTime[id] = now;
+            // 1. Auto Takt calculation
+            if (line.autoTakt && line.targetQuantity > 0 && line.shiftDuration > 0) {
+              const calcTakt = Number((line.shiftDuration / line.targetQuantity).toFixed(2));
+              if (calcTakt !== line.taktTime) {
+                line.taktTime = calcTakt;
+                updated = true;
+              }
+            }
+
+            // 2. Time accumulation (1 sec intervals)
+            if (now - lastTimeTick[id] >= 1000) {
+              if (!line.isRunning) {
+                line.downtime += 1;
+              } else {
+                line.operatingTime += 1;
+              }
+              lastTimeTick[id] += 1000;
+              updated = true;
+            }
+
+            // 3. Parts production
+            if (line.isRunning && line.taktTime > 0) {
+              const taktMs = line.taktTime * 1000;
+              if (now - lastPartTime[id] >= taktMs) {
+                line.partsCount += 1;
+                lastPartTime[id] += taktMs;
+                updated = true;
+              }
+            } else {
+              lastPartTime[id] = now;
+            }
           }
 
           next[id] = line;
@@ -465,7 +695,7 @@ function App() {
     }, 100);
 
     return () => clearInterval(interval);
-  }, []); // Run regardless of mesEnabled to allow persistence
+  }, [isShiftBreak]); // Run regardless of mesEnabled to allow persistence
 
   // Log Parts Milestones
   const prevPartsRef = useRef({});
@@ -533,14 +763,33 @@ function App() {
           updateLine={updateLine}
           eventLogs={eventLogs}
           addLog={addLog}
+          logDefect={logDefect}
+          currentUser={currentUser}
+          ROLES={ROLES}
         />
       );
-      case 'overview': return <OverviewPage linesState={linesState} />;
-      case 'quality': return <QualityPage linesState={linesState} eventLogs={eventLogs} />;
+      case 'overview': return <OverviewPage linesState={linesState} productionHistory={productionHistory} />;
+      case 'quality': return <QualityPage linesState={linesState} eventLogs={eventLogs} defectCounts={defectCounts} />;
       case 'maintenance': return <MaintenancePage linesState={linesState} />;
       default: return <OverviewPage linesState={linesState} />;
     }
   };
+
+  if (!currentUser) {
+    return <LoginScreen onLogin={(name, role) => {
+      setCurrentUser({ name, role });
+      if (role.name === 'OPERATOR') {
+        setActivePage('conveyor');
+      } else {
+        setActivePage('overview');
+      }
+    }} />;
+  }
+
+  const isSupervisor = currentUser.role.level >= ROLES.SUPERVISOR.level;
+  const isOperator = currentUser.role.name === 'OPERATOR';
+  const isQuality = currentUser.role.name === 'QUALITY_TECH';
+  const isMaintenance = currentUser.role.name === 'MAINTENANCE_TECH';
 
   return (
     <>
@@ -554,13 +803,15 @@ function App() {
         </div>
         
         <nav className="side-nav">
-          <button 
-            className={`nav-btn ${activePage === 'overview' ? 'active' : ''}`}
-            onClick={() => setActivePage('overview')}
-          >
-            <LayoutDashboard size={18} />
-            Overview
-          </button>
+          {!isOperator && (
+            <button 
+              className={`nav-btn ${activePage === 'overview' ? 'active' : ''}`}
+              onClick={() => setActivePage('overview')}
+            >
+              <LayoutDashboard size={18} />
+              Overview
+            </button>
+          )}
           <button 
             className={`nav-btn ${activePage === 'conveyor' ? 'active' : ''}`}
             onClick={() => setActivePage('conveyor')}
@@ -568,27 +819,33 @@ function App() {
             <Settings2 size={18} />
             Conveyor Control
           </button>
-          <button 
-            className={`nav-btn ${activePage === 'quality' ? 'active' : ''}`}
-            onClick={() => setActivePage('quality')}
-          >
-            <ActivitySquare size={18} />
-            Quality Control
-          </button>
-          <button 
-            className={`nav-btn ${activePage === 'maintenance' ? 'active' : ''}`}
-            onClick={() => setActivePage('maintenance')}
-          >
-            <ShieldAlert size={18} />
-            Maintenance
-          </button>
+          {(isSupervisor || isQuality) && (
+            <button 
+              className={`nav-btn ${activePage === 'quality' ? 'active' : ''}`}
+              onClick={() => setActivePage('quality')}
+            >
+              <ActivitySquare size={18} />
+              Quality Control
+            </button>
+          )}
+          {(isSupervisor || isMaintenance) && (
+            <button 
+              className={`nav-btn ${activePage === 'maintenance' ? 'active' : ''}`}
+              onClick={() => setActivePage('maintenance')}
+            >
+              <ShieldAlert size={18} />
+              Maintenance
+            </button>
+          )}
         </nav>
 
         <div style={{ marginTop: 'auto', padding: '1.5rem', borderTop: '1px solid var(--border-light)' }}>
           <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontFamily: 'var(--font-mono)', lineHeight: '1.5' }}>
-            <div>USER: ADMIN</div>
+            <div>USER: {currentUser.name}</div>
+            <div>ROLE: {currentUser.role.name}</div>
             <div>STATION: TERMINAL_01</div>
             <div>STATUS: SECURE</div>
+            <button onClick={() => setCurrentUser(null)} style={{ background: 'transparent', border: '1px solid #ff5555', color: '#ff5555', padding: '0.2rem 0.5rem', marginTop: '0.5rem', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.7rem' }}>LOGOUT</button>
           </div>
         </div>
       </div>
@@ -603,6 +860,31 @@ function App() {
             {activePage === 'maintenance' && 'Maintenance & Diagnostics'}
           </h2>
           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+            {isSupervisor && (
+              <>
+                <select 
+                  value={activeShiftDuration}
+                  onChange={(e) => handleShiftChange(parseInt(e.target.value))}
+                  style={{ background: 'transparent', color: 'var(--text-main)', border: '1px solid var(--border-light)', padding: '0.4rem 0.8rem', borderRadius: '4px', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', cursor: 'pointer', outline: 'none', appearance: 'auto' }}
+                >
+                  <option value={3600}>1-Hour Demo Shift</option>
+                  <option value={28800}>8-Hour Shift (3/Day)</option>
+                  <option value={36000}>10-Hour Shift</option>
+                  <option value={43200}>12-Hour Shift (2/Day)</option>
+                </select>
+                <button 
+                  onClick={() => {
+                    const nextState = !isShiftBreak;
+                    setIsShiftBreak(nextState);
+                    addLog(nextState ? 'PLANNED SHIFT BREAK INITIATED. ALL LINES PAUSED.' : 'SHIFT BREAK ENDED. RESUMING PRODUCTION.', 'warning');
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: isShiftBreak ? '#ffaa00' : 'transparent', border: '1px solid #ffaa00', color: isShiftBreak ? '#000' : '#ffaa00', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', fontWeight: 'bold' }}
+                >
+                  <Clock size={14} />
+                  {isShiftBreak ? 'RESUME PRODUCTION' : 'START SHIFT BREAK'}
+                </button>
+              </>
+            )}
             <button 
               onClick={() => setAndonMode(true)}
               style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'transparent', border: '1px solid #ffb042', color: '#ffb042', padding: '0.4rem 0.8rem', borderRadius: '4px', cursor: 'pointer', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', fontWeight: 'bold' }}
@@ -617,10 +899,24 @@ function App() {
               <Download size={14} />
               EXPORT SHIFT REPORT
             </button>
-            <div className="status-pill online">
-              <div className="status-dot"></div>
-              SYSTEM NOMINAL
-            </div>
+            {isShiftBreak ? (
+              <div className="status-pill" style={{ background: '#332200', color: '#ffaa00', borderColor: '#ffaa00' }}>
+                <div className="status-dot" style={{ background: '#ffaa00', animation: 'pulse-yellow 2s infinite' }}></div>
+                PLANNED DOWNTIME
+              </div>
+            ) : (
+              <div className="status-pill online">
+                <div className="status-dot"></div>
+                SYSTEM NOMINAL
+              </div>
+            )}
+            <style>{`
+              @keyframes pulse-yellow {
+                0% { box-shadow: 0 0 0 0 rgba(255, 170, 0, 0.7); }
+                70% { box-shadow: 0 0 0 5px rgba(255, 170, 0, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(255, 170, 0, 0); }
+              }
+            `}</style>
           </div>
         </header>
         
