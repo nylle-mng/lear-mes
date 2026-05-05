@@ -1,0 +1,88 @@
+[
+    {
+        "id": "ws-listener",
+        "type": "websocket-listener",
+        "path": "/ws/mes",
+        "wholemsg": "false"
+    },
+    {
+        "id": "inject-1s",
+        "type": "inject",
+        "name": "1s Tick",
+        "repeat": "1",
+        "crontab": "",
+        "once": true,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 120,
+        "y": 100,
+        "wires": [
+            [
+                "physics-engine"
+            ]
+        ]
+    },
+    {
+        "id": "physics-engine",
+        "type": "function",
+        "name": "MES Physics Engine",
+        "func": "let lines = global.get('linesState');\nlet globalState = global.get('globalState') || { isShiftBreak: false, shiftDuration: 3600 };\n\nif (!lines) {\n  lines = {};\n  for(let i=1; i<=37; i++) {\n     let id = i < 10 ? 'L0'+i : 'L'+i;\n     lines[id] = { \n        partsCount: 0, scrapCount: 0, \n        taktTime: 1, autoTakt: true, \n        isRunning: true, activeFault: null,\n        targetQuantity: 1200,\n        shiftDuration: 3600,\n        operatingTime: 0, downtime: 0\n     };\n  }\n}\n\nlet lastTick = global.get('lastTick') || {};\nlet now = Date.now();\n\nObject.keys(lines).forEach(id => {\n  let line = lines[id];\n  if (line.isRunning && !line.activeFault && !globalState.isShiftBreak) {\n     line.operatingTime += 1;\n     if (!lastTick[id]) lastTick[id] = now;\n     let elapsed = (now - lastTick[id]) / 1000;\n     if (elapsed >= line.taktTime) {\n        let parts = Math.floor(elapsed / line.taktTime);\n        line.partsCount += parts;\n        lastTick[id] = now - ((elapsed % line.taktTime) * 1000);\n     }\n  } else {\n     line.downtime += 1;\n     lastTick[id] = now;\n  }\n});\n\nglobal.set('linesState', lines);\nglobal.set('lastTick', lastTick);\n\nmsg.payload = JSON.stringify({ type: 'STATE_UPDATE', lines: lines, globalState: globalState });\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 330,
+        "y": 100,
+        "wires": [
+            [
+                "ws-out"
+            ]
+        ]
+    },
+    {
+        "id": "ws-out",
+        "type": "websocket out",
+        "name": "Broadcast State",
+        "server": "ws-listener",
+        "client": "",
+        "x": 580,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "ws-in",
+        "type": "websocket in",
+        "name": "React Commands",
+        "server": "ws-listener",
+        "client": "",
+        "x": 120,
+        "y": 260,
+        "wires": [
+            [
+                "process-commands"
+            ]
+        ]
+    },
+    {
+        "id": "process-commands",
+        "type": "function",
+        "name": "Process React Commands",
+        "func": "try {\n  let cmd = JSON.parse(msg.payload);\n  let lines = global.get('linesState') || {};\n  let globalState = global.get('globalState') || { isShiftBreak: false, shiftDuration: 3600 };\n\n  if (cmd.action === 'UPDATE_LINE') {\n     let id = cmd.lineId;\n     if (lines[id]) {\n        lines[id] = { ...lines[id], ...cmd.updates };\n     }\n  }\n  if (cmd.action === 'UPDATE_GLOBAL') {\n     globalState = { ...globalState, ...cmd.updates };\n     global.set('globalState', globalState);\n  }\n  \n  global.set('linesState', lines);\n  \n  // Force immediate broadcast back to UI\n  msg.payload = JSON.stringify({ type: 'STATE_UPDATE', lines: lines, globalState: globalState });\n  return msg;\n} catch(e) {\n  node.error(\"Command Error\", e);\n  return null;\n}",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 350,
+        "y": 260,
+        "wires": [
+            [
+                "ws-out"
+            ]
+        ]
+    }
+]
