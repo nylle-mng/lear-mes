@@ -1,0 +1,15 @@
+{
+  "name": "lear-mes-backend",
+  "version": "1.0.0",
+  "description": "Node-RED backend for Lear MES dashboard",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "node-red": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

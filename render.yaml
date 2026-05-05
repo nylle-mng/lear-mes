@@ -1,0 +1,26 @@
+services:
+  # ─────────────────────────────────────────────
+  # 1. Node-RED Backend (Web Service)
+  # ─────────────────────────────────────────────
+  - type: web
+    name: lear-mes-backend
+    runtime: node
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+
+  # ─────────────────────────────────────────────
+  # 2. React Dashboard (Static Site)
+  # ─────────────────────────────────────────────
+  - type: web
+    name: lear-mes-dashboard
+    runtime: static
+    rootDir: mes-conveyor-app
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_WS_URL
+        sync: false   # Set this manually in Render dashboard after backend deploys

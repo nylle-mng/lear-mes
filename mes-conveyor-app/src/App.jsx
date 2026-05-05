@@ -578,7 +578,10 @@ function App() {
   
   useEffect(() => {
     // Connect to Node-RED Backend
-    const ws = new WebSocket('ws://localhost:1880/ws/mes');
+    // Uses VITE_WS_URL env variable in production (set in Render dashboard)
+    // Falls back to localhost:1880 for local development
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:1880/ws/mes';
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => addLog('Connected to Node-RED Backend (Live Stream Active)', 'success');
