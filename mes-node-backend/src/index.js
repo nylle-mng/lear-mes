@@ -11,6 +11,7 @@ const cors       = require('cors');
 const mqttClient = require('./mqtt/client');
 const routes     = require('./api/routes');
 const { getAllLineStates } = require('./mes/engine');
+const { startSimulator }  = require('./simulator/demo');
 
 const PORT = parseInt(process.env.PORT || '3001');
 
@@ -74,6 +75,13 @@ function broadcast(payload) {
 // ─── Start MQTT and wire broadcast ────────────────────────────────────────────
 mqttClient.setBroadcastCallback(broadcast);
 mqttClient.connect();
+
+// ─── Start Demo Simulator if DEMO_MODE=true ───────────────────────────────────
+if (process.env.DEMO_MODE === 'true') {
+  console.log('[SERVER] 🎮 DEMO_MODE enabled — starting simulator...');
+  // Small delay to let the main MQTT subscriber connect first
+  setTimeout(() => startSimulator(), 3000);
+}
 
 // ─── Start HTTP/WS Server ─────────────────────────────────────────────────────
 server.listen(PORT, () => {
