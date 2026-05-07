@@ -580,7 +580,7 @@ function App() {
     // Connect to Node-RED Backend
     // Uses VITE_WS_URL env variable in production (set in Render dashboard)
     // Falls back to localhost:1880 for local development
-    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:1880/ws/mes';
+    const wsUrl = import.meta.env.VITE_WS_URL || 'ws://localhost:3001/ws';
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
