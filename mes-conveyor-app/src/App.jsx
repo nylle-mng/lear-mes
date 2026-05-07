@@ -588,12 +588,20 @@ function App() {
     
     ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.type === 'STATE_UPDATE') {
-          if (data.lines) setLinesState(data.lines);
-          if (data.globalState) {
-            setIsShiftBreak(data.globalState.isShiftBreak);
-            if (data.globalState.shiftDuration) setActiveShiftDuration(data.globalState.shiftDuration);
+        const payload = JSON.parse(event.data);
+        if (payload.type === 'FULL_STATE') {
+          setLinesState(prev => ({ ...prev, ...payload.data }));
+        } else if (payload.type === 'LINE_UPDATE') {
+          setLinesState(prev => ({
+            ...prev,
+            [payload.lineId]: { ...prev[payload.lineId], ...payload.data }
+          }));
+        } else if (payload.type === 'STATE_UPDATE') {
+          // Legacy support
+          if (payload.lines) setLinesState(payload.lines);
+          if (payload.globalState) {
+            setIsShiftBreak(payload.globalState.isShiftBreak);
+            if (payload.globalState.shiftDuration) setActiveShiftDuration(payload.globalState.shiftDuration);
           }
         }
       } catch(e) { console.error('WS parsing error', e); }
