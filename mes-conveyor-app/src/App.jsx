@@ -72,6 +72,8 @@ const OverviewPage = ({ linesState, productionHistory }) => {
   let totalDownTime = 0;
   let avgPerf = 0;
   let runningLines = 0;
+  let totalSeatParts = 0;
+  let totalHarnessParts = 0;
 
   const lineMetrics = Object.entries(linesState).map(([id, line]) => {
     totalParts += line.partsCount;
@@ -81,6 +83,13 @@ const OverviewPage = ({ linesState, productionHistory }) => {
     if (line.operatingTime > 0) {
       avgPerf += (line.taktTime * line.partsCount) / line.operatingTime;
       runningLines++;
+    }
+
+    const isSeat = parseInt(id.substring(1)) <= 15;
+    if (isSeat) {
+      totalSeatParts += line.partsCount;
+    } else {
+      totalHarnessParts += line.partsCount;
     }
 
     const pTime = line.operatingTime + line.downtime;
@@ -145,7 +154,7 @@ const OverviewPage = ({ linesState, productionHistory }) => {
             <TrendingUp size={16} color="var(--status-run)" />
           </div>
           <div className="hmi-panel-content">
-            <div style={{ fontSize: '2.5rem', color: 'var(--status-run)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{1204 + (linesState['L01']?.partsCount || 0)}</div>
+            <div style={{ fontSize: '2.5rem', color: 'var(--status-run)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{totalSeatParts}</div>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>Completed Seat Sets (Shift)</div>
           </div>
         </div>
@@ -156,7 +165,7 @@ const OverviewPage = ({ linesState, productionHistory }) => {
             <ActivitySquare size={16} color="var(--accent-cyan)" />
           </div>
           <div className="hmi-panel-content">
-            <div style={{ fontSize: '2.5rem', color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{8450 + (linesState['L12']?.partsCount || 0)}</div>
+            <div style={{ fontSize: '2.5rem', color: 'var(--accent-cyan)', fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{totalHarnessParts}</div>
             <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '0.5rem' }}>Wire Harnesses Assembled</div>
           </div>
         </div>
