@@ -7,6 +7,8 @@ const pool = require('../db/pool');
 
 // In-memory line state — keyed by lineId
 const lineStates = {};
+// Track the last logged fault per line to prevent duplicate alarm entries
+const lastLoggedFault = {};
 let activeShiftId = null;
 
 // ─── Start or resume today's shift ────────────────────────────────────────────
@@ -63,21 +65,24 @@ async function processLineUpdate(lineId, payload) {
   const oee = calculateOEE(line);
   const plantId = process.env.PLANT_ID || 'plant1';
 
-  // Persist production tick
-  try {
-    await pool.query(`
-      INSERT INTO production_log
-        (line_id, plant_id, shift_id, parts_count, scrap_count, motor_speed, is_running)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
-    `, [
-      lineId, plantId, shiftId,
-      line.partsCount || 0,
-      line.scrapCount || 0,
-      line.motorSpeed  || 0,
-      line.isRunning   ?? true
-    ]);
-  } catch (err) {
-    console.error(`[MES] DB write error (production_log) for ${lineId}:`, err.message);
+  // Persist production tick (throttled to every 10 seconds per line to avoid DB flood)
+  if (!line._lastProdLog || (Date.now() - line._lastProdLog) >= 10000) {
+    try {
+      await pool.query(`
+        INSERT INTO production_log
+          (line_id, plant_id, shift_id, parts_count, scrap_count, motor_speed, is_running)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+      `, [
+        lineId, plantId, shiftId,
+        line.partsCount || 0,
+        line.scrapCount || 0,
+        line.motorSpeed  || 0,
+        line.isRunning   ?? true
+      ]);
+      lineStates[lineId]._lastProdLog = Date.now();
+    } catch (err) {
+      console.error(`[MES] DB write error (production_log) for ${lineId}:`, err.message);
+    }
   }
 
   // Persist OEE snapshot every N ticks (configurable)
@@ -100,17 +105,25 @@ async function processLineUpdate(lineId, payload) {
     }
   }
 
-  // Detect and log new alarms
-  if (line.activeFault && line.activeFault !== prev.activeFault) {
+  // Detect and log new alarms — only insert once per fault, not every tick
+  const currentFault = line.activeFault || null;
+  const lastFault    = lastLoggedFault[lineId] || null;
+  if (currentFault && currentFault !== lastFault) {
+    lastLoggedFault[lineId] = currentFault;
     try {
       await pool.query(`
         INSERT INTO alarms (line_id, plant_id, fault_code, description)
         VALUES ($1, $2, $3, $4)
-      `, [lineId, plantId, line.activeFault, `Fault detected on LINE_${lineId}`]);
-      console.log(`[ALARM] LINE_${lineId}: ${line.activeFault}`);
+      `, [lineId, plantId, currentFault, `Fault detected on LINE_${lineId}`]);
+      console.log(`[ALARM] LINE_${lineId}: ${currentFault}`);
     } catch (err) {
       console.error(`[MES] DB write error (alarms) for ${lineId}:`, err.message);
     }
+  }
+  // Clear tracked fault when line recovers
+  if (!currentFault && lastFault) {
+    lastLoggedFault[lineId] = null;
+    console.log(`[ALARM CLEARED] LINE_${lineId} recovered from ${lastFault}`);
   }
 
   return { ...line, oee };
