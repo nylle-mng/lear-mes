@@ -1,88 +1,173 @@
 [
     {
-        "id": "ws-listener",
-        "type": "websocket-listener",
-        "path": "/ws/mes",
-        "wholemsg": "false"
+        "id": "tab-main",
+        "type": "tab",
+        "label": "Lear MES — S7 → MQTT",
+        "disabled": false
     },
     {
-        "id": "inject-1s",
+        "id": "s7-conn-01",
+        "type": "s7 endpoint",
+        "transport": "iso-on-tcp",
+        "address": "192.168.1.10",
+        "port": 102,
+        "rack": 0,
+        "slot": 1,
+        "localtsaphi": "01",
+        "localtsaplo": "00",
+        "remotetsaphi": "01",
+        "remotetsaplo": "00",
+        "name": "S7-1200 Line PLC",
+        "vartable": [
+            { "addr": "Q0.0",  "name": "LineRunning" },
+            { "addr": "MD100", "name": "PartsCounter" },
+            { "addr": "MW200", "name": "MotorSpeed"  },
+            { "addr": "MW202", "name": "FaultCode"   },
+            { "addr": "MW204", "name": "ConveyorID"  }
+        ]
+    },
+    {
+        "id": "inject-poll",
         "type": "inject",
-        "name": "1s Tick",
-        "repeat": "1",
+        "name": "Poll every 500ms",
+        "repeat": "0.5",
         "crontab": "",
         "once": true,
+        "onceDelay": "1",
         "topic": "",
         "payload": "",
         "payloadType": "date",
+        "z": "tab-main",
         "x": 120,
         "y": 100,
-        "wires": [
-            [
-                "physics-engine"
-            ]
-        ]
+        "wires": [[ "s7-read" ]]
     },
     {
-        "id": "physics-engine",
+        "id": "s7-read",
+        "type": "s7 in",
+        "name": "Read PLC Tags",
+        "endpoint": "s7-conn-01",
+        "mode": "all",
+        "variable": "",
+        "diff": false,
+        "z": "tab-main",
+        "x": 320,
+        "y": 100,
+        "wires": [[ "tag-processor" ]]
+    },
+    {
+        "id": "tag-processor",
         "type": "function",
-        "name": "MES Physics Engine",
-        "func": "let lines = global.get('linesState');\nlet globalState = global.get('globalState') || { isShiftBreak: false, shiftDuration: 3600 };\n\nif (!lines) {\n  lines = {};\n  for(let i=1; i<=37; i++) {\n     let id = i < 10 ? 'L0'+i : 'L'+i;\n     lines[id] = { \n        partsCount: 0, scrapCount: 0, \n        taktTime: 1, autoTakt: true, \n        isRunning: true, activeFault: null,\n        targetQuantity: 1200,\n        shiftDuration: 3600,\n        operatingTime: 0, downtime: 0\n     };\n  }\n}\n\nlet lastTick = global.get('lastTick') || {};\nlet now = Date.now();\n\nObject.keys(lines).forEach(id => {\n  let line = lines[id];\n  if (line.isRunning && !line.activeFault && !globalState.isShiftBreak) {\n     line.operatingTime += 1;\n     if (!lastTick[id]) lastTick[id] = now;\n     let elapsed = (now - lastTick[id]) / 1000;\n     if (elapsed >= line.taktTime) {\n        let parts = Math.floor(elapsed / line.taktTime);\n        line.partsCount += parts;\n        lastTick[id] = now - ((elapsed % line.taktTime) * 1000);\n     }\n  } else {\n     line.downtime += 1;\n     lastTick[id] = now;\n  }\n});\n\nglobal.set('linesState', lines);\nglobal.set('lastTick', lastTick);\n\nmsg.payload = JSON.stringify({ type: 'STATE_UPDATE', lines: lines, globalState: globalState });\nreturn msg;",
-        "outputs": 1,
+        "name": "Tag Processor",
+        "z": "tab-main",
+        "func": "// Map raw PLC tags to MES line state format\nconst tags = msg.payload;\n\n// ConveyorID from PLC register (e.g. 1 → 'L01')\nconst rawId = parseInt(tags.ConveyorID) || 1;\nconst lineId = rawId < 10 ? 'L0' + rawId : 'L' + rawId;\n\n// Map FaultCode integer to fault string\nconst faultMap = {\n    0:  null,\n    10: 'E-STOP',\n    20: 'JAM_DETECTED',\n    30: 'MOTOR_OVERLOAD',\n    40: 'SENSOR_FAILURE',\n    50: 'COMM_TIMEOUT'\n};\n\nconst statusPayload = {\n    isRunning:   tags.LineRunning === true,\n    activeFault: faultMap[parseInt(tags.FaultCode)] || null,\n    motorSpeed:  parseFloat(tags.MotorSpeed) || 0,\n    timestamp:   new Date().toISOString()\n};\n\nconst productionPayload = {\n    partsCount:  parseInt(tags.PartsCounter) || 0,\n    motorSpeed:  parseFloat(tags.MotorSpeed) || 0,\n    timestamp:   new Date().toISOString()\n};\n\n// Output two messages: status and production\nreturn [\n    { payload: { lineId, data: statusPayload,     type: 'status'     } },\n    { payload: { lineId, data: productionPayload, type: 'production' } }\n];",
+        "outputs": 2,
         "timeout": 0,
         "noerr": 0,
         "initialize": "",
         "finalize": "",
         "libs": [],
-        "x": 330,
+        "x": 530,
         "y": 100,
         "wires": [
-            [
-                "ws-out"
-            ]
+            [ "mqtt-status-out" ],
+            [ "mqtt-prod-out"   ]
         ]
     },
     {
-        "id": "ws-out",
-        "type": "websocket out",
-        "name": "Broadcast State",
-        "server": "ws-listener",
-        "client": "",
-        "x": 580,
-        "y": 180,
+        "id": "mqtt-broker-config",
+        "type": "mqtt-broker",
+        "name": "Mosquitto / HiveMQ",
+        "broker": "15bface993964eed949a08c94b42d068.s1.eu.hivemq.cloud",
+        "port": "8883",
+        "tls": true,
+        "clientid": "node-red-lear-mes",
+        "autoConnect": true,
+        "usetls": true,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "credentials": {
+            "user": "IOControlTech",
+            "password": "Prmc6969_"
+        }
+    },
+    {
+        "id": "mqtt-status-out",
+        "type": "mqtt out",
+        "name": "Publish Status",
+        "topic": "",
+        "qos": "1",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "mqtt-broker-config",
+        "z": "tab-main",
+        "x": 760,
+        "y": 80,
+        "wires": [],
+        "func": "msg.topic = `mes/plant1/line/${msg.payload.lineId}/status`;\nmsg.payload = JSON.stringify(msg.payload.data);\nreturn msg;"
+    },
+    {
+        "id": "mqtt-prod-out",
+        "type": "mqtt out",
+        "name": "Publish Production",
+        "topic": "",
+        "qos": "1",
+        "retain": "false",
+        "broker": "mqtt-broker-config",
+        "z": "tab-main",
+        "x": 760,
+        "y": 140,
         "wires": []
     },
     {
-        "id": "ws-in",
-        "type": "websocket in",
-        "name": "React Commands",
-        "server": "ws-listener",
-        "client": "",
-        "x": 120,
-        "y": 260,
-        "wires": [
-            [
-                "process-commands"
-            ]
-        ]
+        "id": "set-mqtt-topics",
+        "type": "function",
+        "name": "Set MQTT Topic",
+        "z": "tab-main",
+        "func": "// Set MQTT topic dynamically before publish\nconst type = msg.payload.type; // 'status' or 'production'\nconst lineId = msg.payload.lineId;\nmsg.topic = `mes/plant1/line/${lineId}/${type}`;\nmsg.payload = JSON.stringify(msg.payload.data);\nreturn msg;",
+        "outputs": 1,
+        "x": 550,
+        "y": 200,
+        "wires": []
     },
     {
-        "id": "process-commands",
+        "id": "mqtt-cmd-in",
+        "type": "mqtt in",
+        "name": "Receive Commands",
+        "topic": "mes/plant1/line/+/command",
+        "qos": "1",
+        "datatype": "json",
+        "broker": "mqtt-broker-config",
+        "z": "tab-main",
+        "x": 120,
+        "y": 300,
+        "wires": [[ "cmd-to-plc" ]]
+    },
+    {
+        "id": "cmd-to-plc",
         "type": "function",
-        "name": "Process React Commands",
-        "func": "try {\n  let cmd = JSON.parse(msg.payload);\n  let lines = global.get('linesState') || {};\n  let globalState = global.get('globalState') || { isShiftBreak: false, shiftDuration: 3600 };\n\n  if (cmd.action === 'UPDATE_LINE') {\n     let id = cmd.lineId;\n     if (lines[id]) {\n        lines[id] = { ...lines[id], ...cmd.updates };\n     }\n  }\n  if (cmd.action === 'UPDATE_GLOBAL') {\n     globalState = { ...globalState, ...cmd.updates };\n     global.set('globalState', globalState);\n  }\n  \n  global.set('linesState', lines);\n  \n  // Force immediate broadcast back to UI\n  msg.payload = JSON.stringify({ type: 'STATE_UPDATE', lines: lines, globalState: globalState });\n  return msg;\n} catch(e) {\n  node.error(\"Command Error\", e);\n  return null;\n}",
+        "name": "Command → PLC Write",
+        "z": "tab-main",
+        "func": "// Write START/STOP command back to PLC coil\n// When real PLC is connected, use s7 out node here\nconst cmd = msg.payload;\nconst action = cmd.action;\n\nif (action === 'START') {\n    msg.payload = { variable: 'LineRunning', value: true };\n} else if (action === 'STOP') {\n    msg.payload = { variable: 'LineRunning', value: false };\n} else if (action === 'RESET') {\n    msg.payload = { variable: 'PartsCounter', value: 0 };\n}\n\nnode.warn(`PLC Command: ${action}`);\nreturn msg;",
         "outputs": 1,
-        "timeout": 0,
-        "noerr": 0,
-        "initialize": "",
-        "finalize": "",
-        "libs": [],
-        "x": 350,
-        "y": 260,
-        "wires": [
-            [
-                "ws-out"
-            ]
-        ]
+        "x": 380,
+        "y": 300,
+        "wires": [[ "s7-write" ]]
+    },
+    {
+        "id": "s7-write",
+        "type": "s7 out",
+        "name": "Write to PLC",
+        "endpoint": "s7-conn-01",
+        "variable": "",
+        "z": "tab-main",
+        "x": 600,
+        "y": 300,
+        "wires": []
     }
 ]
