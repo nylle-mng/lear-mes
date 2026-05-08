@@ -1,310 +1,257 @@
-import React, { useState } from 'react';
+import React from 'react';
+import { ActivitySquare, Target, CheckCircle, XCircle, Settings } from 'lucide-react';
 
 export default function Dashboard({ mesEnabled, handleMesToggle, activeLine, setActiveLine, linesState, updateLine, eventLogs, addLog, logDefect, currentUser, ROLES }) {
-  const isSupervisor = currentUser?.role.level >= ROLES.SUPERVISOR.level;
-  const canLogDefect = currentUser?.role.level >= ROLES.QUALITY.level || isSupervisor;
-  const [isRejecting, setIsRejecting] = useState(false);
-  const defectCodes = ['SCRATCH/DENT', 'MISSING PART', 'FAILED TEST', 'WRONG COLOR'];
   const lineIds = Object.keys(linesState);
-  const currentIndex = lineIds.indexOf(activeLine);
+  const line = linesState[activeLine] || linesState['L01'];
   
-  const line = linesState[activeLine];
   const isRunning = line.isRunning;
   const isFault = line.activeFault;
+  const isAuto = line.autoTakt !== false;
   
+  // motorSpeed dictates takt time. motorSpeed is in Hz (10-60). takt = 60 / motorSpeed.
+  const motorSpeed = line.motorSpeed || 48;
+  const sliderValue = motorSpeed;
+
   const acceptedParts = Math.max(0, line.partsCount - line.scrapCount);
-  const ftqRate = line.partsCount > 0 ? ((acceptedParts / line.partsCount) * 100) : 100;
+  const rejectRate = line.partsCount > 0 ? ((line.scrapCount / line.partsCount) * 100) : 0;
+  const actualOutputRate = isRunning ? Math.round(3600 / (line.taktTime || 1)) : 0;
+  const targetOutput = 1200;
 
-  const handlePrevLine = () => {
-    if (currentIndex > 0) setActiveLine(lineIds[currentIndex - 1]);
-    else setActiveLine(lineIds[lineIds.length - 1]);
+  const stations = [
+    { id: '101', name: 'Cutting', pos: 'top' },
+    { id: '102', name: 'Terminal', pos: 'top' },
+    { id: '103', name: 'Assembly 1', pos: 'top' },
+    { id: '104', name: 'Assembly 2', pos: 'top' },
+    { id: '105', name: 'Tape Wrap', pos: 'top' },
+    { id: '106', name: 'Labeling', pos: 'bottom' },
+    { id: '107', name: 'Inspection', pos: 'bottom' },
+    { id: '108', name: 'Clip', pos: 'bottom' },
+    { id: '109', name: 'Kitting', pos: 'bottom' },
+    { id: '110', name: 'Testing', pos: 'bottom' },
+  ];
+
+  const handleStart = () => { updateLine(activeLine, { isRunning: true, activeFault: null }); addLog(`LINE_${activeLine} START via MES`, 'success'); };
+  const handleStop = () => { updateLine(activeLine, { isRunning: false }); addLog(`LINE_${activeLine} STOP via MES`, 'warning'); };
+
+  const handleModeChange = (mode) => {
+    const newAuto = mode === 'auto';
+    updateLine(activeLine, { autoTakt: newAuto });
+    addLog(`LINE_${activeLine} set to ${mode.toUpperCase()} mode`, 'info');
   };
 
-  const handleNextLine = () => {
-    if (currentIndex < lineIds.length - 1) setActiveLine(lineIds[currentIndex + 1]);
-    else setActiveLine(lineIds[0]);
+  const handleSpeedChange = (e) => {
+    const val = parseFloat(e.target.value);
+    const takt = (60 / val).toFixed(1);
+    updateLine(activeLine, { motorSpeed: val, taktTime: parseFloat(takt), autoTakt: false });
   };
-
-  const handleStart = () => { updateLine(activeLine, { isRunning: true, activeFault: null }); addLog(`LINE_${activeLine} START via HMI`, 'success'); };
-  const handleStop = () => { updateLine(activeLine, { isRunning: false }); addLog(`LINE_${activeLine} STOP via HMI`, 'warning'); };
-  const handleReset = () => { updateLine(activeLine, { partsCount: 0, scrapCount: 0 }); addLog(`Production count reset for LINE_${activeLine}`, 'info'); };
 
   return (
-    <div style={{ width: '100%', height: '100%', minHeight: '600px', background: '#222325', color: '#fff', fontFamily: 'Arial, sans-serif', padding: '20px', display: 'grid', gridTemplateColumns: '150px 1fr 180px', gap: '30px', boxSizing: 'border-box' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', height: '100%', fontFamily: 'var(--font-sans)' }}>
       
-      {/* LEFT COLUMN: SPEED ADJUST */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center' }}>
-        {/* Global MES Enable */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '100%', padding: '10px', background: '#333', border: '2px solid #111', boxSizing: 'border-box' }}>
-          <div style={{ textAlign: 'center', fontSize: '10px', fontWeight: 'bold', color: mesEnabled ? '#0f0' : '#888' }}>
-            {mesEnabled ? 'MES ONLINE' : 'MES OFFLINE'}
-          </div>
-          <button 
-            style={{ ...btnStyle, padding: '8px', opacity: isSupervisor ? 1 : 0.5 }}
-            onClick={() => handleMesToggle(!mesEnabled)}
-            disabled={!isSupervisor}
-          >
-            {mesEnabled ? 'DISABLE MES' : 'ENABLE MES'}
-          </button>
-        </div>
-
-        <div style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '13px', letterSpacing: '1px', textShadow: '1px 1px 0 #000' }}>
-          MANUAL SPEED<br/>ADJUST
-        </div>
-        <div style={{ background: '#b4b4b4', padding: '10px', width: '80px', height: '300px', border: '3px solid #000', display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative', boxShadow: 'inset 2px 2px 5px rgba(0,0,0,0.5)' }}>
-          <span style={{ color: '#000', fontWeight: 'bold', fontSize: '14px', marginBottom: '15px' }}>MAX</span>
-          <input 
-            type="range" 
-            min="1" max="20" step="0.5"
-            value={21 - line.taktTime} // invert so max is at top
-            onChange={(e) => updateLine(activeLine, { taktTime: 21 - Number(e.target.value) })}
-            style={{ writingMode: 'vertical-lr', direction: 'rtl', height: '200px', width: '24px', cursor: isSupervisor && !line.autoTakt ? 'pointer' : 'not-allowed' }}
-            disabled={line.autoTakt || !isSupervisor}
-          />
-          <span style={{ color: '#000', fontWeight: 'bold', fontSize: '14px', marginTop: '15px' }}>MIN</span>
-        </div>
+      {/* Top Metrics Row */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '1rem' }}>
+        <MetricCard icon={<ActivitySquare color={isRunning ? 'var(--status-run)' : 'var(--status-stop)'} />} title="LINE STATUS" value={isFault ? 'FAULT' : (isRunning ? 'RUNNING' : 'STOPPED')} color={isFault ? 'var(--status-stop)' : (isRunning ? 'var(--status-run)' : 'var(--text-muted)')} />
+        <MetricCard icon={<Target color="var(--accent-cyan)" />} title="TARGET OUTPUT" value={targetOutput} sub="pcs / hr" />
+        <MetricCard icon={<ActivitySquare color="#8b5cf6" />} title="ACTUAL OUTPUT" value={actualOutputRate} sub={`${((actualOutputRate/targetOutput)*100).toFixed(1)}% of Target`} />
+        <MetricCard icon={<CheckCircle color="var(--status-run)" />} title="GOOD PARTS" value={acceptedParts} sub={`${(100 - rejectRate).toFixed(1)}%`} />
+        <MetricCard icon={<XCircle color="var(--status-stop)" />} title="REJECTS" value={line.scrapCount} sub={`${rejectRate.toFixed(1)}%`} />
         
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', background: '#444', padding: '10px', border: '2px solid #000', boxSizing: 'border-box' }}>
-            <span style={{ fontSize: '10px', fontWeight: 'bold' }}>TAKT TIME (SEC)</span>
-            <input 
-              type="number" 
-              value={line.taktTime}
-              onChange={(e) => updateLine(activeLine, { taktTime: Number(e.target.value) })}
-              style={{ background: '#000', color: '#0f0', border: '2px solid #222', padding: '5px', fontFamily: 'monospace', fontWeight: 'bold', width: '100%', boxSizing: 'border-box' }}
-              disabled={line.autoTakt || !isSupervisor}
-              min="0.1"
-              step="0.1"
-            />
+        <div className="hmi-panel" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem', flexDirection: 'row' }}>
+          <div style={{ width: '60px', height: '60px', borderRadius: '50%', border: `4px solid ${line.oee?.oee >= 85 ? 'var(--status-run)' : '#f59e0b'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRightColor: 'var(--border-strong)' }}>
+            <span style={{ fontSize: '12px', color: 'var(--text-muted)', fontWeight: 'bold' }}>OEE</span>
+          </div>
+          <div>
+            <div style={{ fontSize: '1.75rem', fontWeight: 'bold', color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>{line.oee?.oee?.toFixed(1) || '0.0'}%</div>
           </div>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px', width: '100%' }}>
-          <div style={{ width: '30px', height: '30px', borderRadius: '50%', background: line.autoTakt ? '#00ff00' : '#444', border: '2px solid #000', boxShadow: 'inset 1px 1px 3px rgba(0,0,0,0.8)' }}></div>
-          <button 
-            style={{ ...btnStyle, flex: 1, padding: '10px 5px', fontSize: '10px', opacity: (mesEnabled && isSupervisor) ? 1 : 0.5 }}
-            onClick={() => { updateLine(activeLine, { autoTakt: !line.autoTakt }); }}
-            disabled={!mesEnabled || !isSupervisor}
-          >
-            AUTO TAKT<br/>MODE
-          </button>
-        </div>
-
-        {/* Auto Takt Inputs */}
-        {line.autoTakt && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%', background: '#444', padding: '10px', border: '2px solid #000', boxSizing: 'border-box' }}>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '10px', fontWeight: 'bold' }}>TARGET QTY</span>
-              <input 
-                type="number" 
-                value={line.targetQuantity}
-                onChange={(e) => updateLine(activeLine, { targetQuantity: Number(e.target.value) })}
-                style={{ background: '#000', color: '#0f0', border: '2px solid #222', padding: '5px', fontFamily: 'monospace', fontWeight: 'bold', width: '100%', boxSizing: 'border-box' }}
-                disabled={!isSupervisor}
-              />
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column' }}>
-              <span style={{ fontSize: '10px', fontWeight: 'bold' }}>TIME (SEC)</span>
-              <input 
-                type="number" 
-                value={line.shiftDuration}
-                onChange={(e) => updateLine(activeLine, { shiftDuration: Number(e.target.value) })}
-                style={{ background: '#000', color: '#0f0', border: '2px solid #222', padding: '5px', fontFamily: 'monospace', fontWeight: 'bold', width: '100%', boxSizing: 'border-box' }}
-                disabled={!isSupervisor}
-              />
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* CENTER COLUMN: PANELS AND CONVEYOR */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
+      <div style={{ display: 'flex', gap: '1.5rem', flex: 1, minHeight: 0 }}>
         
-        <div style={{ display: 'flex', gap: '30px', width: '100%', justifyContent: 'center' }}>
-          {/* SYSTEM STATUS PILL */}
-          <div style={pillPanelStyle}>
-            <div style={pillTitleStyle}>SYSTEM STATUS</div>
-            <div style={pillRowStyle}><span>TARGET TAKT (S)</span> <span>{Number(line.taktTime).toFixed(1)}</span></div>
-            <div style={pillRowStyle}><span>DIRECTION</span> <span>FORWARD</span></div>
-            <div style={pillRowStyle}><span>CONVEYOR</span> <span>{isFault ? 'FAULTED' : (isRunning ? 'RUNNING' : 'STOPPED')}</span></div>
-          </div>
-
-          {/* PROCESSING STATUS PILL */}
-          <div style={pillPanelStyle}>
-            <div style={pillTitleStyle}>PROCESSING STATUS</div>
-            <div style={pillRowStyle}><span>REJECTED</span> <span style={{ color: line.scrapCount > 0 ? '#cc0000' : '#000' }}>{line.scrapCount}</span></div>
-            <div style={pillRowStyle}><span>ACCEPTED</span> <span>{acceptedParts}</span></div>
-            <div style={pillRowStyle}><span>TOTAL PRODUCTION</span> <span>{line.partsCount}</span></div>
-            <div style={{ ...pillRowStyle, marginTop: '5px', paddingTop: '5px', borderTop: '2px solid #555' }}>
-              <span>FTQ RATE</span> 
-              <span style={{ color: ftqRate < 98 ? '#cc0000' : '#000' }}>{ftqRate.toFixed(1)}%</span>
-            </div>
-          </div>
-        </div>
-
-        {/* 3D CONVEYOR SIMULATION */}
-        <div style={{ marginTop: '80px', position: 'relative', width: '100%', height: '220px' }}>
-          {/* Back Rail */}
-          <div style={{ position: 'absolute', top: '10px', left: '15%', width: '70%', height: '8px', background: '#ccc', borderTop: '2px solid #fff', borderBottom: '2px solid #999' }}></div>
-          <div style={{ position: 'absolute', top: '-5px', left: '20%', width: '10px', height: '20px', background: '#fff', borderRadius: '5px' }}></div>
-          <div style={{ position: 'absolute', top: '-5px', left: '25%', width: '10px', height: '20px', background: '#fff', borderRadius: '5px' }}></div>
-          <div style={{ position: 'absolute', top: '-5px', left: '80%', width: '10px', height: '20px', background: '#fff', borderRadius: '5px' }}></div>
-
-          {/* Belt */}
-          <div style={{ 
-            position: 'absolute', top: '40px', left: '5%', width: '90%', height: '60px', 
-            background: '#111', border: '2px solid #000', transform: 'perspective(400px) rotateX(25deg)',
-            boxShadow: '0 10px 15px rgba(0,0,0,0.8)'
-          }}>
-            {/* Box moving */}
-            {isRunning && !isFault && (
-               <div style={{
-                 position: 'absolute', top: '5px', width: '45px', height: '40px', background: '#e0e0e0', border: '2px solid #555',
-                 animation: `moveBox ${line.taktTime}s linear infinite`, zIndex: 10
-               }}>
-                  {/* Box cross detail */}
-                  <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-                     <div style={{ position: 'absolute', top: '50%', width: '100%', height: '2px', background: '#999' }}></div>
-                     <div style={{ position: 'absolute', left: '50%', width: '2px', height: '100%', background: '#999' }}></div>
-                  </div>
-               </div>
-            )}
-          </div>
-          {/* Front Rail */}
-          <div style={{ position: 'absolute', top: '105px', left: '10%', width: '80%', height: '6px', background: '#ccc', borderTop: '2px solid #fff', borderBottom: '2px solid #999', zIndex: 20 }}></div>
-          
-          {/* Legs */}
-          <div style={{ position: 'absolute', top: '110px', left: '15%', width: '4px', height: '70px', background: '#888', zIndex: 5 }}></div>
-          <div style={{ position: 'absolute', top: '110px', left: '35%', width: '4px', height: '70px', background: '#888', zIndex: 5 }}></div>
-          <div style={{ position: 'absolute', top: '110px', left: '55%', width: '4px', height: '70px', background: '#888', zIndex: 5 }}></div>
-          <div style={{ position: 'absolute', top: '110px', left: '75%', width: '4px', height: '70px', background: '#888', zIndex: 5 }}></div>
-          <div style={{ position: 'absolute', top: '110px', left: '90%', width: '4px', height: '70px', background: '#888', zIndex: 5 }}></div>
-          
-          {/* Support beams */}
-          <div style={{ position: 'absolute', top: '150px', left: '15%', width: '75%', height: '3px', background: '#666', zIndex: 4 }}></div>
-        </div>
-
-        {/* BOTTOM CONTROLS */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '30px', marginTop: 'auto', marginBottom: '20px', flexWrap: 'wrap', justifyContent: 'center' }}>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-            <span style={{ fontSize: '10px', fontWeight: 'bold' }}>SELECT CONVEYOR</span>
-            <select 
-              style={{ background: '#b4b4b4', color: '#000', padding: '10px', border: '2px solid #000', fontSize: '16px', fontWeight: 'bold', width: '120px' }}
-              value={activeLine}
-              onChange={(e) => setActiveLine(e.target.value)}
-            >
-              {Object.keys(linesState).map(id => <option key={id} value={id}>LINE_{id}</option>)}
-            </select>
-          </div>
-
-          {/* LCD Display */}
-          <div style={{ background: '#111', border: '5px solid #000', padding: '15px 20px', color: '#fff', fontFamily: 'monospace', fontSize: '26px', letterSpacing: '2px', display: 'flex', gap: '25px', boxShadow: 'inset 0 0 10px #000' }}>
-            <span style={{ color: '#ccc' }}>JPH:</span>
-            <span>{isRunning ? Math.round(3600 / (line.taktTime || 1)) : '0'}</span>
-          </div>
-
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button style={navBtnStyle} onClick={handlePrevLine}>{"◄|"}</button>
-            <button style={navBtnStyle} onClick={handleNextLine}>{"|►"}</button>
-          </div>
-
-          <button style={startBtnStyle(isRunning && !isFault)} onClick={handleStart}>START</button>
-          <button style={stopBtnStyle(!isRunning || isFault)} onClick={handleStop}>STOP</button>
-        </div>
-
-      </div>
-
-      {/* RIGHT COLUMN */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', alignItems: 'center', paddingTop: '20px' }}>
-        
-        {/* Progress Bar */}
-        {line.autoTakt && (
-          <div style={{ width: '100%', background: '#111', padding: '10px', border: '2px solid #444', boxSizing: 'border-box' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '10px', fontWeight: 'bold', marginBottom: '5px' }}>
-              <span>BATCH PROGRESS</span>
-              <span style={{ color: '#00ff00' }}>{(Math.min(line.partsCount / Math.max(line.targetQuantity, 1) * 100, 100)).toFixed(1)}%</span>
-            </div>
-            <div style={{ width: '100%', height: '15px', background: '#222', border: '1px solid #000' }}>
-              <div style={{ width: `${Math.min(line.partsCount / Math.max(line.targetQuantity, 1) * 100, 100)}%`, height: '100%', background: '#00cc00', transition: 'width 0.5s' }}></div>
-            </div>
-          </div>
-        )}
-
-        <button style={btnStyle} onClick={handleReset}>RESET TOTAL<br/>PRODUCTION</button>
-        <button style={btnStyle} onClick={() => { handleReset(); handleStart(); }}>START NEW<br/>BATCH ?</button>
-        
-        {isRejecting ? (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', width: '100%', marginTop: '10px' }}>
-            <div style={{ textAlign: 'center', fontSize: '10px', fontWeight: 'bold', color: '#ffaaaa' }}>SELECT DEFECT CODE</div>
-            {defectCodes.map(code => (
-              <button 
-                key={code} 
-                style={{ ...btnStyle, background: '#aa0000', color: '#fff', border: '2px solid #ff5555' }}
-                onClick={() => {
-                  updateLine(activeLine, { activeFault: code, scrapCount: line.scrapCount + 1, isRunning: false });
-                  if (logDefect) logDefect(code);
-                  addLog(`Defect [${code}] logged on LINE_${activeLine}`, 'error');
-                  setIsRejecting(false);
-                }}
+        {/* Conveyor Graphics Main Panel */}
+        <div className="hmi-panel" style={{ flex: 1 }}>
+          <div className="hmi-panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span className="hmi-panel-title">CONVEYOR SYSTEM OVERVIEW - LINE {activeLine}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+              <select 
+                value={activeLine} 
+                onChange={e => setActiveLine(e.target.value)}
+                style={{ background: '#000', color: 'var(--accent-cyan)', border: '1px solid var(--border-strong)', padding: '0.2rem 0.5rem', fontFamily: 'var(--font-mono)', outline: 'none' }}
               >
-                {code}
-              </button>
-            ))}
-            <button style={{ ...btnStyle, marginTop: '10px' }} onClick={() => setIsRejecting(false)}>CANCEL</button>
+                {lineIds.map(id => <option key={id} value={id}>LINE_{id}</option>)}
+              </select>
+            </div>
           </div>
-        ) : (
-          <button 
-            style={{ ...btnStyle, color: '#aa0000', border: '2px solid #aa0000', marginTop: '10px', opacity: canLogDefect ? 1 : 0.5 }} 
-            onClick={() => setIsRejecting(true)}
-            disabled={!canLogDefect}
-          >
-            LOG NEW<br/>DEFECT
-          </button>
-        )}
+          <div className="hmi-panel-content" style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#080a0d', flex: 1, padding: 0 }}>
+            
+            <div className="grid-overlay"></div>
+
+            <div style={{ width: '100%', maxWidth: '900px', height: '300px', position: 'relative', zIndex: 10 }}>
+              <svg width="100%" height="100%" viewBox="0 0 1000 300" preserveAspectRatio="none">
+                <rect x="50" y="50" width="900" height="200" rx="100" fill="none" stroke="var(--border-strong)" strokeWidth="20" />
+                <rect x="50" y="50" width="900" height="200" rx="100" fill="none" stroke="var(--text-muted)" strokeWidth="16" strokeDasharray="10 5" opacity="0.3" />
+              </svg>
+
+              <div style={{ position: 'absolute', left: '-20px', top: '135px', background: '#000', border: '1px solid var(--status-run)', color: 'var(--status-run)', padding: '4px 12px', fontFamily: 'var(--font-mono)' }}>START</div>
+              <div style={{ position: 'absolute', right: '-20px', top: '135px', background: '#000', border: '1px solid var(--status-stop)', color: 'var(--status-stop)', padding: '4px 12px', fontFamily: 'var(--font-mono)' }}>END</div>
+
+              <div style={{ position: 'absolute', top: '-40px', left: '15%', right: '15%', display: 'flex', justifyContent: 'space-between' }}>
+                {stations.filter(s => s.pos === 'top').map(s => <StationNode key={s.id} station={s} line={line} />)}
+              </div>
+
+              <div style={{ position: 'absolute', bottom: '-40px', left: '15%', right: '15%', display: 'flex', justifyContent: 'space-between', flexDirection: 'row-reverse' }}>
+                {stations.filter(s => s.pos === 'bottom').map(s => <StationNode key={s.id} station={s} line={line} />)}
+              </div>
+
+              {isRunning && !isFault && (
+                <div style={{
+                  position: 'absolute', top: '35px', width: '30px', height: '30px', background: 'var(--accent-cyan)', border: '2px solid #fff',
+                  boxShadow: '0 0 10px var(--accent-cyan)',
+                  animation: `conveyorMove ${line.taktTime * 2}s linear infinite`, zIndex: 10
+                }}></div>
+              )}
+            </div>
+          </div>
+          <div style={{ padding: '1rem', borderTop: '1px solid var(--border-light)', display: 'flex', gap: '1.5rem', fontSize: '0.8rem', color: 'var(--text-muted)', background: 'var(--bg-panel)' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width:'8px', height:'8px', borderRadius:'50%', background:'var(--status-run)' }}></div> Running</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width:'8px', height:'8px', borderRadius:'50%', background:'var(--status-stop)' }}></div> Stopped</span>
+            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}><div style={{ width:'8px', height:'8px', borderRadius:'50%', background:'#f59e0b' }}></div> Fault</span>
+          </div>
+        </div>
+
+        {/* Right Sidebar */}
+        <div style={{ width: '320px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+          
+          <div className="hmi-panel">
+            <div className="hmi-panel-header">
+              <span className="hmi-panel-title">VFD SPEED CONTROL</span>
+              <Settings size={16} color="var(--text-muted)" />
+            </div>
+            <div className="hmi-panel-content" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div style={{ display: 'flex', border: '1px solid var(--border-strong)', background: '#000', cursor: 'pointer' }}>
+                <div 
+                  onClick={() => handleModeChange('auto')}
+                  style={{ flex: 1, textAlign: 'center', padding: '0.5rem', background: isAuto ? 'var(--accent-cyan)' : 'transparent', color: isAuto ? '#000' : 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>AUTO (MES)</div>
+                <div 
+                  onClick={() => handleModeChange('manual')}
+                  style={{ flex: 1, textAlign: 'center', padding: '0.5rem', background: !isAuto ? 'var(--accent-cyan)' : 'transparent', color: !isAuto ? '#000' : 'var(--text-muted)', fontSize: '0.8rem', fontWeight: 'bold' }}>MANUAL</div>
+              </div>
+              
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Target Output (pcs / hr)</div>
+                <div className="hmi-input-wrapper">
+                  <input type="text" value={targetOutput} readOnly className="hmi-input" style={{ textAlign: 'center' }} />
+                </div>
+              </div>
+
+              <div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Average Speed Command</div>
+                <div style={{ textAlign: 'center', color: isAuto ? 'var(--text-muted)' : 'var(--accent-cyan)', fontSize: '1.5rem', fontWeight: 'bold', fontFamily: 'var(--font-mono)', marginBottom: '0.5rem' }}>{sliderValue.toFixed(1)} Hz</div>
+                <input 
+                  type="range" min="10" max="60" step="0.5" 
+                  value={sliderValue} 
+                  onChange={handleSpeedChange}
+                  disabled={isAuto}
+                  style={{ width: '100%', accentColor: isAuto ? 'var(--text-muted)' : 'var(--accent-cyan)', opacity: isAuto ? 0.5 : 1, cursor: isAuto ? 'not-allowed' : 'pointer' }} 
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button className="hmi-btn btn-run" onClick={handleStart}>APPLY</button>
+                <button className="hmi-btn btn-stop" onClick={handleStop}>STOP</button>
+              </div>
+            </div>
+          </div>
+
+          <div className="hmi-panel">
+            <div className="hmi-panel-header">
+              <span className="hmi-panel-title">QUALITY & OVERRIDES</span>
+            </div>
+            <div className="hmi-panel-content" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <button 
+                onClick={() => { logDefect(activeLine); addLog(`Manual Defect Logged on LINE_${activeLine}`, 'warning'); }}
+                className="hmi-btn" style={{ background: 'var(--status-stop)', color: '#fff', border: 'none', padding: '0.5rem', fontWeight: 'bold' }}>
+                LOG REJECT (-1)
+              </button>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <button 
+                  onClick={() => { updateLine(activeLine, { isRunning: false, activeFault: 'E-STOP' }); addLog(`Manual E-STOP triggered on LINE_${activeLine}`, 'error'); }}
+                  className="hmi-btn" style={{ flex: 1, background: '#f59e0b', color: '#000', border: 'none', padding: '0.5rem', fontWeight: 'bold' }}>
+                  FAULT
+                </button>
+                <button 
+                  onClick={() => { updateLine(activeLine, { partsCount: 0, scrapCount: 0 }); addLog(`Reset counters on LINE_${activeLine}`, 'info'); }}
+                  className="hmi-btn" style={{ flex: 1, background: 'transparent', color: 'var(--text-main)', border: '1px solid var(--border-strong)', padding: '0.5rem' }}>
+                  RESET
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="hmi-panel" style={{ flex: 1 }}>
+            <div className="hmi-panel-header">
+              <span className="hmi-panel-title">PLC STATUS</span>
+            </div>
+            <div style={{ padding: '1rem', flex: 1, overflowY: 'auto' }}>
+              <table style={{ width: '100%', fontSize: '0.75rem', textAlign: 'left', borderCollapse: 'collapse', fontFamily: 'var(--font-mono)' }}>
+                <tbody>
+                  {stations.slice(0, 5).map(s => (
+                    <tr key={s.id} style={{ borderBottom: '1px solid var(--border-light)' }}>
+                      <td style={{ padding: '0.75rem 0', color: 'var(--text-main)' }}>PLC-CV-{s.id}</td>
+                      <td style={{ padding: '0.75rem 0', color: 'var(--status-run)' }}>● OK</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
       </div>
 
       <style>{`
-        @keyframes moveBox {
-          0% { left: 0%; opacity: 0; }
-          5% { opacity: 1; }
-          95% { opacity: 1; }
-          100% { left: 85%; opacity: 0; }
+        @keyframes conveyorMove {
+          0% { left: 5%; top: 20px; }
+          45% { left: 90%; top: 20px; }
+          50% { left: 90%; top: 220px; }
+          95% { left: 5%; top: 220px; }
+          100% { left: 5%; top: 20px; }
         }
       `}</style>
     </div>
   );
 }
 
-const btnStyle = {
-  background: '#d0d0d0', border: '2px solid #fff', borderBottomColor: '#555', borderRightColor: '#555',
-  color: '#000', padding: '12px 10px', fontWeight: 'bold', fontSize: '12px', textAlign: 'center', cursor: 'pointer',
-  width: '100%', textTransform: 'uppercase', lineHeight: '1.4'
-};
+function MetricCard({ icon, title, value, sub, color = 'var(--text-main)' }) {
+  return (
+    <div className="hmi-panel" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        {icon}
+        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', fontWeight: 'bold' }}>{title}</span>
+      </div>
+      <div style={{ fontSize: '1.75rem', fontWeight: 'bold', color: color, fontFamily: 'var(--font-mono)' }}>{value}</div>
+      {sub && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{sub}</div>}
+    </div>
+  );
+}
 
-const navBtnStyle = {
-  background: '#d0d0d0', border: '2px solid #fff', borderBottomColor: '#555', borderRightColor: '#555',
-  color: '#000', padding: '15px 12px', fontWeight: 'bold', fontSize: '18px', cursor: 'pointer'
-};
+function StationNode({ station, line }) {
+  const isRunning = line.isRunning;
+  const isFault = line.activeFault;
+  const statusColor = isFault ? 'var(--status-stop)' : (isRunning ? 'var(--status-run)' : 'var(--text-muted)');
+  const hz = isRunning ? (line.taktTime ? (60 - line.taktTime).toFixed(1) : '45.0') : '0.0';
 
-const pillPanelStyle = {
-  background: '#d0d0d0', border: '4px solid #000', borderRadius: '40px', padding: '25px 40px',
-  color: '#000', display: 'flex', flexDirection: 'column', gap: '10px', minWidth: '320px',
-  boxShadow: 'inset 2px 2px 10px #fff'
-};
-
-const pillTitleStyle = { textAlign: 'center', fontWeight: 'bold', fontSize: '15px', marginBottom: '15px', letterSpacing: '1px' };
-
-const pillRowStyle = { display: 'flex', justifyContent: 'space-between', fontSize: '14px', fontWeight: 'bold' };
-
-const startBtnStyle = (isActive) => ({
-  width: '90px', height: '90px', borderRadius: '50%', background: isActive ? '#00cc00' : '#888',
-  border: '10px solid #000', color: isActive ? '#000' : '#fff', fontWeight: 'bold', fontSize: '16px',
-  cursor: 'pointer', boxShadow: '2px 2px 5px rgba(0,0,0,0.5)', transition: 'background 0.2s'
-});
-
-const stopBtnStyle = (isActive) => ({
-  width: '90px', height: '90px', borderRadius: '50%', background: isActive ? '#cc0000' : '#888',
-  border: '10px solid #000', color: isActive ? '#000' : '#fff', fontWeight: 'bold', fontSize: '16px',
-  cursor: 'pointer', boxShadow: '2px 2px 5px rgba(0,0,0,0.5)', transition: 'background 0.2s'
-});
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px' }}>
+      <div style={{ fontSize: '0.7rem', color: 'var(--text-main)', fontFamily: 'var(--font-mono)' }}>CV-{station.id}</div>
+      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{station.name}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', color: statusColor, fontWeight: '500' }}>
+        <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusColor, boxShadow: `0 0 5px ${statusColor}` }}></div>
+        {isFault ? 'FAULT' : (isRunning ? 'RUN' : 'STOP')}
+      </div>
+      <div style={{ fontSize: '0.7rem', color: 'var(--accent-cyan)', fontWeight: 'bold', fontFamily: 'var(--font-mono)' }}>{hz} Hz</div>
+      <div style={{ width: '2px', height: '40px', background: 'var(--border-strong)', marginTop: station.pos === 'top' ? '0' : '-100px', transform: station.pos === 'bottom' ? 'scaleY(-1)' : 'none' }}></div>
+    </div>
+  );
+}

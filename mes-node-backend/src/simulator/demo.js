@@ -41,6 +41,48 @@ function startSimulator() {
     console.log('[SIMULATOR] ✅ Demo simulator connected to MQTT broker');
     console.log(`[SIMULATOR] Simulating ${TOTAL_LINES} conveyor lines...`);
 
+    // Subscribe to command topic to listen for START/STOP from dashboard
+    client.subscribe(`mes/${PLANT_ID}/line/+/command`, (err) => {
+      if (!err) console.log('[SIMULATOR] Subscribed to command topics');
+    });
+
+    client.on('message', (topic, message) => {
+      // mes/plant1/line/L01/command
+      const parts = topic.split('/');
+      if (parts.length === 5 && parts[4] === 'command') {
+        const lineId = parts[3];
+        if (lineSimState[lineId]) {
+          try {
+            const cmd = JSON.parse(message.toString());
+            if (cmd.action === 'START') {
+              lineSimState[lineId].isRunning = true;
+              lineSimState[lineId].activeFault = null;
+              console.log(`[SIMULATOR] Overrode LINE_${lineId} to START`);
+            } else if (cmd.action === 'STOP') {
+              lineSimState[lineId].isRunning = false;
+              console.log(`[SIMULATOR] Overrode LINE_${lineId} to STOP`);
+            } else if (cmd.action === 'SPEED') {
+              lineSimState[lineId].motorSpeed = cmd.value;
+              lineSimState[lineId].taktTime = cmd.taktTime;
+              lineSimState[lineId].autoTakt = cmd.autoTakt;
+              console.log(`[SIMULATOR] Overrode LINE_${lineId} SPEED: ${cmd.value}Hz (Takt: ${cmd.taktTime}s) Auto: ${cmd.autoTakt}`);
+            } else if (cmd.action === 'REJECT') {
+              lineSimState[lineId].scrapCount += 1;
+              console.log(`[SIMULATOR] Manual REJECT added to LINE_${lineId}`);
+            } else if (cmd.action === 'RESET') {
+              lineSimState[lineId].partsCount = 0;
+              lineSimState[lineId].scrapCount = 0;
+              lineSimState[lineId].downtime = 0;
+              lineSimState[lineId].operatingTime = 0;
+              console.log(`[SIMULATOR] RESET counters on LINE_${lineId}`);
+            }
+          } catch (e) {
+            console.error('[SIMULATOR] Invalid command payload', e);
+          }
+        }
+      }
+    });
+
     // Tick every 1 second — simulate production
     setInterval(() => {
       const now = Date.now();

@@ -688,7 +688,24 @@ function App() {
 
   const updateLine = (id, updates) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-       wsRef.current.send(JSON.stringify({ action: 'UPDATE_LINE', lineId: id, updates }));
+       let action = updates.isRunning === true ? 'START' : (updates.isRunning === false ? 'STOP' : null);
+       if (updates.motorSpeed !== undefined || updates.autoTakt !== undefined) {
+         action = 'SPEED';
+       } else if (updates.scrapCount !== undefined && updates.partsCount === undefined) {
+         action = 'REJECT';
+       } else if (updates.partsCount === 0) {
+         action = 'RESET';
+       }
+       if (action) {
+         wsRef.current.send(JSON.stringify({ 
+           type: 'LINE_COMMAND', 
+           lineId: id, 
+           action,
+           value: updates.motorSpeed,
+           taktTime: updates.taktTime,
+           autoTakt: updates.autoTakt
+         }));
+       }
     }
     // Optimistic local update
     setLinesState(prev => ({
